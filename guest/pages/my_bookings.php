@@ -17,25 +17,39 @@ $reservations = $db->query("
 ")->fetch_all(MYSQLI_ASSOC);
 
 function catIcon($cat) {
-    $map = ['pool'=>'🏊','beach'=>'🏖️','accommodation'=>'🛏️','dining'=>'🍽️','spa'=>'💆','sports'=>'🏄','event'=>'🎉','activity'=>'🎯','resort'=>'🏨'];
+    $map = [
+        'pool'=>'fa-solid fa-person-swimming',
+        'beach'=>'fa-solid fa-umbrella-beach',
+        'accommodation'=>'fa-solid fa-bed',
+        'dining'=>'fa-solid fa-utensils',
+        'spa'=>'fa-solid fa-spa',
+        'sports'=>'fa-solid fa-person-running',
+        'event'=>'fa-solid fa-calendar-days',
+        'activity'=>'fa-solid fa-bullseye',
+        'resort'=>'fa-solid fa-hotel'
+    ];
     $c = strtolower(trim($cat ?? ''));
-    foreach ($map as $k => $v) { if (str_contains($c, $k)) return $v; }
-    return '✨';
+    foreach ($map as $k => $v) {
+        if (str_contains($c, $k)) {
+            return "<i class=\"{$v}\"></i>";
+        }
+    }
+    return '<i class="fa-solid fa-star"></i>';
 }
 
 function statusBadge($status) {
     $map = [
-        'pending'   => ['bg'=>'#fef9c3','color'=>'#854d0e','icon'=>'⏳','label'=>'Pending'],
-        'approved'  => ['bg'=>'#dcfce7','color'=>'#166534','icon'=>'✅','label'=>'Approved'],
-        'cancelled' => ['bg'=>'#fee2e2','color'=>'#991b1b','icon'=>'❌','label'=>'Cancelled'],
+        'pending'   => ['bg'=>'#fef9c3','color'=>'#854d0e','icon'=>'fa-solid fa-clock','label'=>'Pending'],
+        'approved'  => ['bg'=>'#dcfce7','color'=>'#166534','icon'=>'fa-solid fa-check-circle','label'=>'Approved'],
+        'cancelled' => ['bg'=>'#fee2e2','color'=>'#991b1b','icon'=>'fa-solid fa-times-circle','label'=>'Cancelled'],
     ];
-    $s = $map[$status] ?? ['bg'=>'#f3f4f6','color'=>'#6b7280','icon'=>'❓','label'=>ucfirst($status)];
-    return "<span style=\"display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:9999px;font-size:0.75rem;font-weight:700;background:{$s['bg']};color:{$s['color']};\">{$s['icon']} {$s['label']}</span>";
+    $s = $map[$status] ?? ['bg'=>'#f3f4f6','color'=>'#6b7280','icon'=>'fa-solid fa-question-circle','label'=>ucfirst($status)];
+    return "<span style=\"display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:9999px;font-size:0.75rem;font-weight:700;background:{$s['bg']};color:{$s['color']};\"><i class=\"{$s['icon']}\"></i> {$s['label']}</span>";
 }
 
 function payBadge($method) {
     if (!$method) return '';
-    $icons = ['cash'=>'🏖️ Pay at Resort','gcash'=>'📱 GCash'];
+    $icons = ['cash'=>'<i class="fa-solid fa-money-bill-wave"></i> Pay at Resort','gcash'=>'<i class="fa-solid fa-mobile-alt"></i> GCash'];
     $label = $icons[$method] ?? ucfirst($method);
     return "<span style=\"font-size:0.76rem;color:var(--gray-400);\">$label</span>";
 }
@@ -93,7 +107,7 @@ require_once __DIR__ . '/../includes/header.php';
               <span style="padding:4px 12px;border-radius:9999px;font-size:0.75rem;font-weight:700;
                 background:<?= $res['rate_type']==='daytime'?'#fef9c3':'#dbeafe' ?>;
                 color:<?= $res['rate_type']==='daytime'?'#854d0e':'#1e40af' ?>;">
-                <?= $res['rate_type']==='daytime'?'☀️ Daytime':'🌙 Overnight' ?>
+                <?= $res['rate_type']==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight' ?>
               </span>
             </div>
           </div>

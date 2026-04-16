@@ -45,17 +45,17 @@ require_once __DIR__ . '/../includes/header.php';
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
 
         <div class="profile-info-item">
-          <p class="profile-info-label">📧 Email Address</p>
+          <p class="profile-info-label"><i class="fa-solid fa-envelope"></i> Email Address</p>
           <p class="profile-info-val"><?= e($guest['email'] ?? '—') ?></p>
         </div>
 
         <div class="profile-info-item">
-          <p class="profile-info-label">📞 Contact Number</p>
+          <p class="profile-info-label"><i class="fa-solid fa-phone"></i> Contact Number</p>
           <p class="profile-info-val"><?= e($guest['contact_num'] ?? '—') ?></p>
         </div>
 
         <div class="profile-info-item" style="grid-column:1/-1;">
-          <p class="profile-info-label">📍 Address</p>
+          <p class="profile-info-label"><i class="fa-solid fa-map-marker-alt"></i> Address</p>
           <p class="profile-info-val"><?= e($guest['address'] ?? '—') ?></p>
         </div>
 
@@ -64,7 +64,7 @@ require_once __DIR__ . '/../includes/header.php';
       <!-- Actions -->
       <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--green-100);display:flex;gap:12px;flex-wrap:wrap;">
         <a href="<?= SITE_URL ?>/guest/index.php" class="btn btn-outline">← Back to Home</a>
-        <a href="<?= SITE_URL ?>/guest/pages/logout.php" class="btn btn-red btn-sm" style="margin-left:auto;">🚪 Sign Out</a>
+        <a href="<?= SITE_URL ?>/guest/pages/logout.php" class="btn btn-red btn-sm" style="margin-left:auto;"><i class="fa-solid fa-sign-out-alt"></i> Sign Out</a>
       </div>
 
     </div>

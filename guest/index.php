@@ -44,10 +44,24 @@ foreach ($pricingRows as $row) {
 }
 
 function catIcon($category) {
-    $map = ['pool'=>'🏊','beach'=>'🏖️','accommodation'=>'🛏️','dining'=>'🍽️','spa'=>'💆','sports'=>'🏄','event'=>'🎉','activity'=>'🎯','resort'=>'🏨'];
+    $map = [
+        'pool'=>'fa-solid fa-person-swimming',
+        'beach'=>'fa-solid fa-umbrella-beach',
+        'accommodation'=>'fa-solid fa-bed',
+        'dining'=>'fa-solid fa-utensils',
+        'spa'=>'fa-solid fa-spa',
+        'sports'=>'fa-solid fa-person-running',
+        'event'=>'fa-solid fa-calendar-days',
+        'activity'=>'fa-solid fa-bullseye',
+        'resort'=>'fa-solid fa-hotel'
+    ];
     $cat = strtolower(trim($category ?? ''));
-    foreach ($map as $key => $icon) { if (str_contains($cat, $key)) return $icon; }
-    return '✨';
+    foreach ($map as $key => $icon) {
+        if (str_contains($cat, $key)) {
+            return "<i class=\"{$icon}\"></i>";
+        }
+    }
+    return '<i class="fa-solid fa-star"></i>';
 }
 
 require_once __DIR__ . '/includes/header.php';
@@ -60,7 +74,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="hero-bg"></div>
   <div class="container">
     <div class="hero-content">
-      <div class="hero-badge">📍 <?= e($address) ?></div>
+      <div class="hero-badge"><i class="fas fa-map-marker-alt"></i> <?= e($address) ?></div>
       <h1><?= e($tagline) ?><br><span>in Batangas</span></h1>
       <p><?= e($description) ?></p>
       <div class="hero-btns">
@@ -69,7 +83,7 @@ require_once __DIR__ . '/includes/header.php';
       </div>
       <div class="hero-stats">
         <div class="hero-stat"><p><?= count($facilities) ?>+</p><p>Facilities</p></div>
-        <div class="hero-stat"><p>4.9 ★</p><p>Rating</p></div>
+        <div class="hero-stat"><p>4.9 <i class="fa-solid fa-star" style="color: var(--yellow);"></i></p><p>Rating</p></div>
         <div class="hero-stat"><p>500+</p><p>Happy Guests</p></div>
       </div>
     </div>
@@ -81,10 +95,10 @@ require_once __DIR__ . '/includes/header.php';
 <section class="section-light" style="padding:0;">
   <div class="container">
     <div class="features-grid">
-      <div class="feature-item"><div class="feature-icon">🌿</div><p class="feature-title">Lush Garden Grounds</p><p class="feature-desc">Surrounded by tropical flora and tranquil landscapes.</p></div>
-      <div class="feature-item"><div class="feature-icon">🏖️</div><p class="feature-title">Beach Access</p><p class="feature-desc">Enjoy the resort's beautiful beach and crystal waters.</p></div>
-      <div class="feature-item"><div class="feature-icon">🍳</div><p class="feature-title">Resort Dining</p><p class="feature-desc">Fresh, locally-sourced ingredients every meal.</p></div>
-      <div class="feature-item"><div class="feature-icon">🛡️</div><p class="feature-title">24/7 Security</p><p class="feature-desc">Round-the-clock security for your peace of mind.</p></div>
+      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-leaf"></i></div><p class="feature-title">Lush Garden Grounds</p><p class="feature-desc">Surrounded by tropical flora and tranquil landscapes.</p></div>
+      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-umbrella-beach"></i></div><p class="feature-title">Beach Access</p><p class="feature-desc">Enjoy the resort's beautiful beach and crystal waters.</p></div>
+      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-utensils"></i></div><p class="feature-title">Resort Dining</p><p class="feature-desc">Fresh, locally-sourced ingredients every meal.</p></div>
+      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-shield-alt"></i></div><p class="feature-title">24/7 Security</p><p class="feature-desc">Round-the-clock security for your peace of mind.</p></div>
     </div>
   </div>
 </section>
@@ -98,7 +112,7 @@ require_once __DIR__ . '/includes/header.php';
     </div>
     <?php if (empty($facilities)): ?>
       <div class="empty-state">
-        <div class="empty-icon">🏖️</div>
+        <div class="empty-icon"><i class="fa-solid fa-umbrella-beach"></i></div>
         <p class="empty-title">Facilities coming soon</p>
         <p class="empty-desc">We are preparing amazing experiences for you. Check back soon!</p>
       </div>
@@ -123,16 +137,16 @@ require_once __DIR__ . '/includes/header.php';
           <div class="flex justify-between items-center" style="margin-bottom:6px;">
             <h3 class="room-title"><?= e($f['facility_name']) ?></h3>
             <?php if ($f['max_capacity']): ?>
-              <span style="font-size:0.8rem;color:var(--gray-400);">👤 Up to <?= (int)$f['max_capacity'] ?></span>
+              <span style="font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-users"></i> Up to <?= (int)$f['max_capacity'] ?></span>
             <?php endif; ?>
           </div>
           <p class="room-desc"><?= e($f['description']) ?></p>
           <div class="room-tags">
             <?php if ($f['daytime_price']): ?>
-              <span class="tag">☀️ Day: <?= peso($f['daytime_price']) ?></span>
+              <span class="tag"><i class="fa-solid fa-sun"></i> Day: <?= peso($f['daytime_price']) ?></span>
             <?php endif; ?>
             <?php if ($f['overnight_price']): ?>
-              <span class="tag">🌙 Night: <?= peso($f['overnight_price']) ?></span>
+              <span class="tag"><i class="fa-solid fa-moon"></i> Night: <?= peso($f['overnight_price']) ?></span>
             <?php endif; ?>
             <?php if (!$f['daytime_price'] && !$f['overnight_price']): ?>
               <span class="tag">Contact for pricing</span>
@@ -201,7 +215,7 @@ require_once __DIR__ . '/includes/header.php';
           <div style="flex:1;">
             <?php foreach ($grouped as $rateType => $rates): ?>
               <p style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 6px;">
-                <?= $rateType === 'daytime' ? '☀️ Daytime' : '🌙 Overnight' ?>
+                <?= $rateType === 'daytime' ? '<i class="fa-solid fa-sun"></i> Daytime' : '<i class="fa-solid fa-moon"></i> Overnight' ?>
               </p>
               <?php foreach ($rates as $rate): ?>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
@@ -225,7 +239,7 @@ require_once __DIR__ . '/includes/header.php';
           <div style="flex:1;">
             <?php foreach ($grouped as $rateType => $rates): ?>
               <p style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 6px;">
-                <?= $rateType === 'daytime' ? '☀️ Daytime' : '🌙 Overnight' ?>
+                <?= $rateType === 'daytime' ? '<i class="fa-solid fa-sun"></i> Daytime' : '<i class="fa-solid fa-moon"></i> Overnight' ?>
               </p>
               <?php foreach ($rates as $rate): ?>
                 <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
@@ -267,7 +281,7 @@ require_once __DIR__ . '/includes/header.php';
       <!-- Text & contact info -->
       <div>
         <div style="display:inline-flex;align-items:center;gap:8px;background:var(--green-100);color:var(--green-dark);font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:6px 16px;border-radius:var(--radius-full);margin-bottom:20px;">
-          🌿 <?= e($resortName) ?>
+          <i class="fa-solid fa-leaf"></i> <?= e($resortName) ?>
         </div>
         <h3 style="font-size:1.7rem;font-weight:700;color:var(--green-dark);line-height:1.3;margin-bottom:16px;">
           <?= e($tagline) ?>
@@ -277,19 +291,19 @@ require_once __DIR__ . '/includes/header.php';
         </p>
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div class="contact-card">
-            <div class="contact-icon">📍</div>
+            <div class="contact-icon"><i class="fa-solid fa-map-marker-alt"></i></div>
             <div><p class="contact-label">Location</p><p class="contact-val"><?= e($address) ?></p></div>
           </div>
           <div class="contact-card">
-            <div class="contact-icon">📞</div>
+            <div class="contact-icon"><i class="fa-solid fa-phone"></i></div>
             <div><p class="contact-label">Phone</p><p class="contact-val">+63 912 345 6789</p></div>
           </div>
           <div class="contact-card">
-            <div class="contact-icon">✉️</div>
+            <div class="contact-icon"><i class="fa-solid fa-envelope"></i></div>
             <div><p class="contact-label">Email</p><p class="contact-val">hello@mgardenresort.com</p></div>
           </div>
           <div class="contact-card">
-            <div class="contact-icon">⏰</div>
+            <div class="contact-icon"><i class="fa-solid fa-clock"></i></div>
             <div>
               <p class="contact-label">Resort Hours</p>
               <p class="contact-val">Check-in: <strong>2:00 PM</strong> &nbsp;|&nbsp; Check-out: <strong>12:00 PM</strong><br>Front Desk: <strong>24/7</strong></p>
@@ -297,8 +311,8 @@ require_once __DIR__ . '/includes/header.php';
           </div>
         </div>
         <div style="margin-top:28px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="mailto:hello@mgardenresort.com" class="btn btn-primary">✉️ Email Us</a>
-          <a href="https://maps.google.com/?q=<?= urlencode($address) ?>" target="_blank" rel="noopener" class="btn btn-outline">🗺️ Get Directions</a>
+          <a href="mailto:hello@mgardenresort.com" class="btn btn-primary"><i class="fa-solid fa-envelope"></i> Email Us</a>
+          <a href="https://maps.google.com/?q=<?= urlencode($address) ?>" target="_blank" rel="noopener" class="btn btn-outline"><i class="fa-solid fa-map-marked-alt"></i> Get Directions</a>
         </div>
       </div>
 
@@ -322,7 +336,7 @@ require_once __DIR__ . '/includes/header.php';
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Happy Guests</p>
           </div>
           <div class="card" style="padding:20px;text-align:center;">
-            <p style="font-size:1.8rem;font-weight:700;color:var(--green);">4.9★</p>
+            <p style="font-size:1.8rem;font-weight:700;color:var(--green);">4.9<i class="fa-solid fa-star" style="color: var(--yellow); margin-left: 4px;"></i></p>
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Rating</p>
           </div>
         </div>

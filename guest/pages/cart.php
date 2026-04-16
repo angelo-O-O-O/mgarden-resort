@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
                 $caStmt->execute();
             }
         }
-        setFlash('success', '✅ Cart item updated!');
+        setFlash('success', 'Cart item updated!');
     } else {
         setFlash('error', 'Could not update item.');
     }
@@ -134,10 +134,24 @@ unset($item);
 $cartTotal = array_sum(array_column($cartItems, 'grand_total'));
 
 function catIcon($cat) {
-    $map = ['pool'=>'🏊','beach'=>'🏖️','accommodation'=>'🛏️','dining'=>'🍽️','spa'=>'💆','sports'=>'🏄','event'=>'🎉','activity'=>'🎯','resort'=>'🏨'];
+    $map = [
+        'pool'=>'fa-solid fa-person-swimming',
+        'beach'=>'fa-solid fa-umbrella-beach',
+        'accommodation'=>'fa-solid fa-bed',
+        'dining'=>'fa-solid fa-utensils',
+        'spa'=>'fa-solid fa-spa',
+        'sports'=>'fa-solid fa-person-running',
+        'event'=>'fa-solid fa-calendar-days',
+        'activity'=>'fa-solid fa-bullseye',
+        'resort'=>'fa-solid fa-hotel'
+    ];
     $c = strtolower(trim($cat ?? ''));
-    foreach ($map as $k => $v) { if (str_contains($c, $k)) return $v; }
-    return '✨';
+    foreach ($map as $k => $v) {
+        if (str_contains($c, $k)) {
+            return "<i class=\"{$v}\"></i>";
+        }
+    }
+    return '<i class="fa-solid fa-star"></i>';
 }
 
 require_once __DIR__ . '/../includes/header.php';
@@ -233,7 +247,7 @@ input[type=number]{-moz-appearance:textfield;}
                   <?php if ($item['category']): ?><span style="font-size:0.72rem;color:var(--gray-400);"><?= catIcon($item['category']) ?> <?= e(ucfirst($item['category'])) ?></span><?php endif; ?>
                 </div>
                 <span style="padding:4px 12px;border-radius:var(--radius-full);font-size:0.75rem;font-weight:700;white-space:nowrap;background:<?= $item['rate_type']==='daytime'?'#fef9c3':'#dbeafe' ?>;color:<?= $item['rate_type']==='daytime'?'#854d0e':'#1e40af' ?>;">
-                  <?= $item['rate_type']==='daytime'?'☀️ Daytime':'🌙 Overnight' ?>
+                  <?= $item['rate_type']==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight' ?>
                 </span>
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
@@ -565,7 +579,7 @@ function eChange(cid){
     coDate.value=eFmtDate(d.toISOString().slice(0,10));
   }
 
-  badge.textContent      = rt==='daytime'?'☀️ Daytime':'🌙 Overnight';
+  badge.innerHTML        = rt==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight';
   badge.style.background = rt==='daytime'?'#fef9c3':'#dbeafe';
   badge.style.color      = rt==='daytime'?'#854d0e':'#1e40af';
   eRecalc(cid);

@@ -110,10 +110,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
 }
 
 function catIcon($cat) {
-    $map = ['pool'=>'🏊','beach'=>'🏖️','accommodation'=>'🛏️','dining'=>'🍽️','spa'=>'💆','sports'=>'🏄','event'=>'🎉','activity'=>'🎯','resort'=>'🏨'];
+    $map = [
+        'pool'=>'fa-solid fa-person-swimming',
+        'beach'=>'fa-solid fa-umbrella-beach',
+        'accommodation'=>'fa-solid fa-bed',
+        'dining'=>'fa-solid fa-utensils',
+        'spa'=>'fa-solid fa-spa',
+        'sports'=>'fa-solid fa-person-running',
+        'event'=>'fa-solid fa-calendar-days',
+        'activity'=>'fa-solid fa-bullseye',
+        'resort'=>'fa-solid fa-hotel'
+    ];
     $c = strtolower(trim($cat ?? ''));
-    foreach ($map as $k => $v) { if (str_contains($c, $k)) return $v; }
-    return '✨';
+    foreach ($map as $k => $v) {
+        if (str_contains($c, $k)) {
+            return "<i class=\"{$v}\"></i>";
+        }
+    }
+    return '<i class="fa-solid fa-star"></i>';
 }
 
 $imgSrc = !empty($facility['photo'])
@@ -361,7 +375,7 @@ input[type=number] { -moz-appearance: textfield; }
               </div>
             </div>
             <p style="font-size:0.78rem;color:var(--gray-400);margin-top:4px;">
-              Same-day ≤ 6PM = ☀️ Daytime &nbsp;|&nbsp; Past 6PM or next-day AM = 🌙 Overnight
+              Same-day ≤ 6PM = <i class="fa-solid fa-sun"></i> Daytime &nbsp;|&nbsp; Past 6PM or next-day AM = <i class="fa-solid fa-moon"></i> Overnight
             </p>
             <p class="form-error" id="coTimeError"></p>
           </div>
@@ -560,11 +574,11 @@ function onAnyChange() {
   // Show rate type badge
   group.style.display = 'block';
   if (rateType === 'daytime') {
-    badge.textContent      = '☀️ Daytime';
+    badge.innerHTML        = '<i class="fa-solid fa-sun"></i> Daytime';
     badge.style.background = '#fef9c3';
     badge.style.color      = '#854d0e';
   } else {
-    badge.textContent      = '🌙 Overnight';
+    badge.innerHTML        = '<i class="fa-solid fa-moon"></i> Overnight';
     badge.style.background = '#dbeafe';
     badge.style.color      = '#1e40af';
   }

@@ -12,6 +12,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
   <title><?= isset($pageTitle) ? e($pageTitle) . ' — ' : '' ?><?= SITE_NAME ?></title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
   <link rel="stylesheet" href="<?= SITE_URL ?>/guest/css/style.css?v=1"/>
 </head>
 <body>
@@ -52,7 +53,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
       <?php if ($guest): ?>
         <!-- Cart -->
         <a href="<?= SITE_URL ?>/guest/pages/cart.php" class="cart-btn" title="My Cart">
-          🛒
+          <i class="fa-solid fa-shopping-cart"></i>
         </a>
         <!-- User Dropdown -->
         <div class="user-dropdown">
@@ -69,20 +70,20 @@ $currentPage = basename($_SERVER['PHP_SELF']);
               </div>
             <?php endif; ?>
             <span class="user-name"><?= e(explode(' ', trim($guest['guest_name'] ?? 'Guest'))[0]) ?></span>
-            <span>▾</span>
+            <i class="fa-solid fa-chevron-down"></i>
           </button>
           <div class="dropdown-menu" id="dropdownMenu">
-            <a href="<?= SITE_URL ?>/guest/pages/my_bookings.php" class="dropdown-item">📋 My Bookings</a>
-            <a href="<?= SITE_URL ?>/guest/pages/profile.php"     class="dropdown-item">👤 My Profile</a>
+            <a href="<?= SITE_URL ?>/guest/pages/my_bookings.php" class="dropdown-item"><i class="fa-solid fa-calendar-check"></i> My Bookings</a>
+            <a href="<?= SITE_URL ?>/guest/pages/profile.php"     class="dropdown-item"><i class="fa-solid fa-user"></i> My Profile</a>
             <div class="dropdown-divider"></div>
-            <a href="<?= SITE_URL ?>/guest/pages/logout.php" class="dropdown-item text-red">🚪 Sign Out</a>
+            <a href="<?= SITE_URL ?>/guest/pages/logout.php" class="dropdown-item text-red"><i class="fa-solid fa-sign-out-alt"></i> Sign Out</a>
           </div>
         </div>
       <?php else: ?>
         <a href="<?= SITE_URL ?>/guest/pages/login.php"  class="btn btn-outline">Login</a>
         <a href="<?= SITE_URL ?>/guest/pages/signup.php" class="btn btn-primary">Sign Up</a>
       <?php endif; ?>
-      <button class="hamburger" onclick="toggleNav()" id="hamburger">☰</button>
+      <button class="hamburger" onclick="toggleNav()" id="hamburger"><i class="fa-solid fa-bars"></i></button>
     </div>
 
   </div>
@@ -92,7 +93,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 <?php if ($flash): ?>
 <div class="flash flash-<?= e($flash['type']) ?>" id="flashMsg">
   <?= e($flash['message']) ?>
-  <button onclick="document.getElementById('flashMsg').remove()" class="flash-close">✕</button>
+  <button onclick="document.getElementById('flashMsg').remove()" class="flash-close"><i class="fa-solid fa-times"></i></button>
 </div>
 <?php endif; ?>
 

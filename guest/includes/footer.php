@@ -42,9 +42,9 @@
       <div class="footer-col">
         <h4 class="footer-heading">Contact</h4>
         <ul class="footer-links">
-          <li>📍 Calatagan, Batangas, Philippines</li>
-          <li>📞 +63 912 345 6789</li>
-          <li>✉️ hello@mgardenresort.com</li>
+          <li><i class="fa-solid fa-map-marker-alt"></i> Calatagan, Batangas, Philippines</li>
+          <li><i class="fa-solid fa-phone"></i> +63 912 345 6789</li>
+          <li><i class="fa-solid fa-envelope"></i> hello@mgardenresort.com</li>
         </ul>
       </div>
 

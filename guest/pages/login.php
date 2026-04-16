@@ -66,7 +66,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="email">Email Address</label>
           <div class="input-icon-wrap">
-            <span class="input-icon">✉️</span>
+            <span class="input-icon"><i class="fa-solid fa-envelope"></i></span>
             <input type="email" id="email" name="email" class="form-control"
                    placeholder="you@example.com" value="<?= e($email) ?>"/>
           </div>
@@ -76,7 +76,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="password">Password</label>
           <div class="input-icon-wrap">
-            <span class="input-icon">🔒</span>
+            <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
             <input type="password" id="password" name="password" class="form-control"
                    placeholder="Your password" style="padding-right:44px;"/>
             <button type="button" class="pw-toggle" id="pwToggle" onclick="togglePw('password','pwToggle')" aria-label="Show password">

@@ -77,7 +77,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="guest_name">Full Name <span style="color:var(--red)">*</span></label>
           <div class="input-icon-wrap">
-            <span class="input-icon">👤</span>
+            <span class="input-icon"><i class="fa-solid fa-user"></i></span>
             <input type="text" id="guest_name" name="guest_name" class="form-control"
                    placeholder="Juan dela Cruz" value="<?= e($guest_name) ?>"/>
           </div>
@@ -87,7 +87,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="email">Email Address <span style="color:var(--red)">*</span></label>
           <div class="input-icon-wrap">
-            <span class="input-icon">✉️</span>
+            <span class="input-icon"><i class="fa-solid fa-envelope"></i></span>
             <input type="email" id="email" name="email" class="form-control"
                    placeholder="you@example.com" value="<?= e($email) ?>"/>
           </div>
@@ -97,7 +97,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="contact_num">Contact Number</label>
           <div class="input-icon-wrap">
-            <span class="input-icon">📞</span>
+            <span class="input-icon"><i class="fa-solid fa-phone"></i></span>
             <input type="text" id="contact_num" name="contact_num" class="form-control"
                    placeholder="09XXXXXXXXX" maxlength="11" value="<?= e($contact_num) ?>"/>
           </div>
@@ -107,7 +107,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="address">Address</label>
           <div class="input-icon-wrap">
-            <span class="input-icon">📍</span>
+            <span class="input-icon"><i class="fa-solid fa-map-marker-alt"></i></span>
             <input type="text" id="address" name="address" class="form-control"
                    placeholder="City, Province" value="<?= e($address_val) ?>"/>
           </div>
@@ -116,7 +116,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="password">Password <span style="color:var(--red)">*</span></label>
           <div class="input-icon-wrap">
-            <span class="input-icon">🔒</span>
+            <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
             <input type="password" id="password" name="password" class="form-control"
                    placeholder="At least 8 characters" style="padding-right:44px;"/>
             <button type="button" class="pw-toggle" onclick="togglePw('password','eyeOpen1','eyeClosed1')" aria-label="Show password">
@@ -130,7 +130,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="form-group">
           <label class="form-label" for="confirm">Confirm Password <span style="color:var(--red)">*</span></label>
           <div class="input-icon-wrap">
-            <span class="input-icon">🔒</span>
+            <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
             <input type="password" id="confirm" name="confirm" class="form-control"
                    placeholder="Repeat your password" style="padding-right:44px;"/>
             <button type="button" class="pw-toggle" onclick="togglePw('confirm','eyeOpen2','eyeClosed2')" aria-label="Show password">

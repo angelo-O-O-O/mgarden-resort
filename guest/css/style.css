@@ -112,7 +112,7 @@ input, select, textarea { font-family: inherit; }
 .hamburger {
   display: none; background: none; border: none;
   font-size: 1.4rem; padding: 6px; border-radius: var(--radius-sm);
-  color: var(--green);
+  color: var(--green); cursor: pointer;
 }
 @media (max-width: 768px) {
   .hamburger { display: block; }
@@ -206,7 +206,7 @@ input, select, textarea { font-family: inherit; }
 .features-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 0; }
 @media (max-width: 768px) { .features-grid { grid-template-columns: repeat(2,1fr); } }
 .feature-item  { text-align: center; padding: 36px 20px; }
-.feature-icon  { font-size: 2.4rem; margin-bottom: 12px; }
+.feature-icon  { font-size: 2.4rem; margin-bottom: 12px; color: var(--green); }
 .feature-title { font-weight: 700; color: var(--green-dark); margin-bottom: 6px; }
 .feature-desc  { color: var(--gray-500); font-size: 0.84rem; line-height: 1.5; }
 
@@ -256,7 +256,7 @@ input, select, textarea { font-family: inherit; }
   transition: var(--transition);
 }
 .package-card:hover { background: rgba(255,255,255,0.16); }
-.package-icon { font-size: 2.2rem; margin-bottom: 14px; }
+.package-icon { font-size: 2.2rem; margin-bottom: 14px; color: var(--yellow); }
 .package-name {
   color: #fff; font-size: 1.2rem;
   font-weight: 700; margin-bottom: 8px;
@@ -274,7 +274,7 @@ input, select, textarea { font-family: inherit; }
 .contact-icon {
   width: 42px; height: 42px; background: var(--green-light);
   border-radius: 12px; display: flex; align-items: center;
-  justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+  justify-content: center; font-size: 1.1rem; flex-shrink: 0; color: var(--green);
 }
 .contact-label {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
@@ -366,13 +366,14 @@ input, select, textarea { font-family: inherit; }
 .flash-success { background: #f0fdf4; color: #166534; border-color: var(--green); }
 .flash-error   { background: #fff1f2; color: #9f1239; border-color: var(--red); }
 .flash-info    { background: #eff6ff; color: #1e40af; border-color: #3b82f6; }
-.flash-close   { background: none; border: none; font-size: 1rem; cursor: pointer; opacity: 0.6; }
+.flash-close   { background: none; border: none; font-size: 1rem; cursor: pointer; opacity: 0.6; color: inherit; }
 
 /* ── USER DROPDOWN ── */
 .cart-btn {
   position: relative; background: none; border: none;
   font-size: 1.3rem; padding: 6px 10px; border-radius: var(--radius-sm);
   cursor: pointer; transition: var(--transition); text-decoration: none;
+  color: var(--green);
 }
 .cart-btn:hover { background: var(--green-50); }
 .user-dropdown  { position: relative; }
@@ -447,10 +448,26 @@ input, select, textarea { font-family: inherit; }
 .form-control:focus { outline: none; border-color: var(--green); }
 .form-control::placeholder { color: var(--gray-400); }
 .input-icon-wrap   { position: relative; }
-.input-icon-wrap .form-control { padding-left: 42px; }
+.input-icon-wrap .form-control { padding-left: 44px; }
 .input-icon {
   position: absolute; left: 14px; top: 50%;
-  transform: translateY(-50%); font-size: 1rem; pointer-events: none;
+  transform: translateY(-50%);
+  font-size: 1rem; pointer-events: none;
+  color: var(--gray-400);
+}
+.input-icon i {
+  display: block;
+}
+.pw-toggle {
+  position: absolute; right: 12px; top: 50%;
+  transform: translateY(-50%);
+  border: none; background: none;
+  padding: 0; display: flex;
+  align-items: center; justify-content: center;
+  color: var(--gray-500); cursor: pointer;
+}
+.pw-toggle svg {
+  display: block;
 }
 
 /* ── AUTH FORM CARD (always show shadow) ── */

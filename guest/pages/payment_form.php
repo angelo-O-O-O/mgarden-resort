@@ -171,7 +171,7 @@ require_once __DIR__ . '/../includes/header.php';
           <span style="font-size:0.75rem;padding:3px 10px;border-radius:var(--radius-full);font-weight:700;
             background:<?= $item['rate_type']==='daytime'?'#fef9c3':'#dbeafe' ?>;
             color:<?= $item['rate_type']==='daytime'?'#854d0e':'#1e40af' ?>;">
-            <?= $item['rate_type']==='daytime'?'☀️ Daytime':'🌙 Overnight' ?>
+            <?= $item['rate_type']==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight' ?>
           </span>
         </div>
         <span style="font-size:1.1rem;font-weight:700;color:var(--green-dark);"><?= peso($item['grand_total']) ?></span>
