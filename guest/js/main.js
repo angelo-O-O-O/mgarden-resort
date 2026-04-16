@@ -44,8 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const sections = document.querySelectorAll('section[id]');
   const links    = document.querySelectorAll('.nav-link');
   const homeLink = document.getElementById('navHome');
-
-  if (sections.length === 0) return;
+  const schedulesLink = document.getElementById('navSchedules');
 
   function setActiveLink() {
     let current = '';
@@ -66,8 +65,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
     } else {
-      // At top of page — highlight Home
-      if (homeLink) homeLink.classList.add('active');
+      // Highlight direct page links when there are no sections or the page is a dedicated page
+      if (window.location.pathname.endsWith('/schedules.php')) {
+        if (schedulesLink) schedulesLink.classList.add('active');
+      } else if (homeLink) {
+        homeLink.classList.add('active');
+      }
     }
   }
 
