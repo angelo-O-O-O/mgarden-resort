@@ -1,24 +1,25 @@
-// MGarden Beach Resort — Receptionist Main JS
+// MGarden Beach Resort — Receptionist JS
 
-// ── NAVBAR TOGGLE (mobile) ──
-function toggleNav() {
-  const nav = document.getElementById('navLinks');
-  if (nav) nav.classList.toggle('open');
+// ── SIDEBAR ──
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('show');
+}
+function closeSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('show');
 }
 
-// ── USER DROPDOWN ──
-function toggleDropdown() {
-  const menu = document.getElementById('dropdownMenu');
-  if (menu) menu.classList.toggle('show');
-}
-
-document.addEventListener('click', function (e) {
-  const dropdown = document.querySelector('.user-dropdown');
-  const menu     = document.getElementById('dropdownMenu');
-  if (dropdown && menu && !dropdown.contains(e.target)) {
-    menu.classList.remove('show');
-  }
-});
+// ── TOPBAR DATE ──
+(function updateDate() {
+  const el = document.getElementById('topbarDate');
+  if (!el) return;
+  el.textContent = new Date().toLocaleDateString('en-PH', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+  });
+})();
 
 // ── FLASH AUTO-DISMISS ──
 setTimeout(function () {
@@ -26,109 +27,80 @@ setTimeout(function () {
   if (flash) {
     flash.style.transition = 'opacity 0.4s';
     flash.style.opacity    = '0';
-    setTimeout(function () { flash.remove(); }, 400);
+    setTimeout(() => flash.remove(), 400);
   }
 }, 4000);
 
 // ── PASSWORD TOGGLE ──
 function togglePw(inputId, toggleId) {
-  const input  = document.getElementById(inputId);
-  const toggle = document.getElementById(toggleId);
-  const eyeOpen  = toggle.querySelector('#eyeOpen');
+  const input     = document.getElementById(inputId);
+  const toggle    = document.getElementById(toggleId);
+  const eyeOpen   = toggle.querySelector('#eyeOpen');
   const eyeClosed = toggle.querySelector('#eyeClosed');
-
   if (input.type === 'password') {
     input.type = 'text';
-    eyeOpen.style.display = 'none';
-    eyeClosed.style.display = 'block';
+    if (eyeOpen)   eyeOpen.style.display   = 'none';
+    if (eyeClosed) eyeClosed.style.display = 'block';
   } else {
     input.type = 'password';
-    eyeOpen.style.display = 'block';
-    eyeClosed.style.display = 'none';
+    if (eyeOpen)   eyeOpen.style.display   = 'block';
+    if (eyeClosed) eyeClosed.style.display = 'none';
   }
 }
 
 // ── RESERVATION ACTIONS ──
-function approveReservation(reservationId) {
-  if (confirm('Are you sure you want to approve this reservation?')) {
-    updateReservationStatus(reservationId, 'approved');
-  }
+function approveReservation(id) {
+  if (confirm('Approve this reservation?')) updateReservationStatus(id, 'approved');
 }
-
-function cancelReservation(reservationId) {
-  if (confirm('Are you sure you want to cancel this reservation?')) {
-    updateReservationStatus(reservationId, 'cancelled');
-  }
+function cancelReservation(id) {
+  if (confirm('Cancel this reservation? This cannot be undone.')) updateReservationStatus(id, 'cancelled');
 }
-
 function updateReservationStatus(reservationId, status) {
-  // Create form data
   const formData = new FormData();
   formData.append('reservation_id', reservationId);
   formData.append('status', status);
-
   const apiUrl = window.RECEPTIONIST_API?.updateReservationUrl || 'update_reservation.php';
-
-  // Send request
-  fetch(apiUrl, {
-    method: 'POST',
-    body: formData
-  })
-  .then(response => response.text())
-  .then(text => {
-    try {
-      return JSON.parse(text);
-    } catch (error) {
-      throw new Error(text || 'Invalid JSON response');
-    }
-  })
-  .then(data => {
-    if (data.success) {
-      location.reload();
-    } else {
-      alert('Error: ' + (data.message || 'Failed to update reservation'));
-    }
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('An error occurred while updating the reservation. See console for details.');
-  });
+  fetch(apiUrl, { method: 'POST', body: formData })
+    .then(r => r.text())
+    .then(text => {
+      try { return JSON.parse(text); }
+      catch (e) { throw new Error(text || 'Invalid JSON'); }
+    })
+    .then(data => {
+      if (data.success) location.reload();
+      else alert('Error: ' + (data.message || 'Failed to update'));
+    })
+    .catch(err => {
+      console.error(err);
+      alert('An error occurred. Check the console for details.');
+    });
 }
 
-// ── FORM VALIDATION ──
+// ── LOGIN FORM VALIDATION ──
 document.addEventListener('DOMContentLoaded', function () {
   const loginForm = document.getElementById('loginForm');
-  if (loginForm) {
-    loginForm.addEventListener('submit', function (e) {
-      const email = document.getElementById('email');
-      const password = document.getElementById('password');
-      let isValid = true;
+  if (!loginForm) return;
+  loginForm.addEventListener('submit', function (e) {
+    const email    = document.getElementById('email');
+    const password = document.getElementById('password');
+    const emailErr = document.getElementById('emailError');
+    const passErr  = document.getElementById('passwordError');
+    let isValid    = true;
 
-      // Reset errors
-      document.getElementById('emailError').style.display = 'none';
-      document.getElementById('passwordError').style.display = 'none';
+    emailErr.style.display = 'none';
+    passErr.style.display  = 'none';
 
-      // Email validation
-      if (!email.value.trim()) {
-        document.getElementById('emailError').textContent = 'Email is required';
-        document.getElementById('emailError').style.display = 'block';
-        isValid = false;
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-        document.getElementById('emailError').textContent = 'Please enter a valid email';
-        document.getElementById('emailError').style.display = 'block';
-        isValid = false;
-      }
-
-      // Password validation
-      if (!password.value.trim()) {
-        document.getElementById('passwordError').textContent = 'Password is required';
-        document.getElementById('passwordError').style.display = 'block';
-        isValid = false;
-      }
-
-      if (!isValid) {
-        e.preventDefault();
-      }
-    });
-  }
+    if (!email.value.trim()) {
+      emailErr.textContent = 'Email is required';
+      emailErr.style.display = 'block'; isValid = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+      emailErr.textContent = 'Please enter a valid email';
+      emailErr.style.display = 'block'; isValid = false;
+    }
+    if (!password.value.trim()) {
+      passErr.textContent = 'Password is required';
+      passErr.style.display = 'block'; isValid = false;
+    }
+    if (!isValid) e.preventDefault();
+  });
 });

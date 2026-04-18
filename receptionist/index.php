@@ -1,5 +1,4 @@
 <?php
-$pageTitle = 'Login';
 require_once __DIR__ . '/includes/config.php';
 
 if (isReceptionistLoggedIn()) redirect(SITE_URL . '/receptionist/pages/dashboard.php');
@@ -38,16 +37,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/header_auth.php';
 ?>
 
 <div class="auth-wrap">
   <div class="auth-card">
     <div class="auth-header">
       <div class="auth-logo">
-        <img src="<?= SITE_URL ?>/images/mgardenlogo.jpg" alt="MGarden"
-             style="width:100%;height:100%;object-fit:contain;border-radius:12px;"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='block';"/>
+        <img
+          src="<?= SITE_URL ?>/images/mgardenlogo.jpg"
+          alt="MGarden"
+          onerror="this.style.display='none';this.nextElementSibling.style.display='block';"
+        />
         <span style="display:none;font-size:1.5rem;font-weight:700;color:#fff;">M</span>
       </div>
       <h1 class="auth-title">Receptionist Login</h1>
@@ -55,8 +56,11 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 
     <?php if (!empty($errors)): ?>
-      <div class="flash flash-error" style="margin-bottom:20px;border-radius:var(--radius);">
-        <?= e($errors[0]) ?>
+      <div style="margin: 0 32px 4px;">
+        <div class="flash flash-error" style="position:static;max-width:100%;margin-bottom:0;">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <?= e($errors[0]) ?>
+        </div>
       </div>
     <?php endif; ?>
 
@@ -79,16 +83,28 @@ require_once __DIR__ . '/includes/header.php';
             <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
             <input type="password" id="password" name="password" class="form-control"
                    placeholder="Your password" style="padding-right:44px;"/>
-            <button type="button" class="pw-toggle" id="pwToggle" onclick="togglePw('password','pwToggle')" aria-label="Show password">
-              <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button type="button" class="pw-toggle" id="pwToggle"
+                    onclick="togglePw('password','pwToggle')" aria-label="Show password">
+              <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
             </button>
           </div>
           <p class="form-error" id="passwordError"></p>
         </div>
 
         <button type="submit" class="btn btn-primary btn-full" style="margin-top:8px;">
-          Login →
+          <i class="fa-solid fa-arrow-right-to-bracket"></i> Sign In
         </button>
 
       </form>
@@ -96,4 +112,4 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer_auth.php'; ?>
