@@ -18,12 +18,13 @@ if (isset($_GET['delete'])) {
 
 // ── Handle Clear All ──
 if (isset($_GET['clear'])) {
+    $db->query("DELETE FROM cart_addons WHERE cart_id IN (SELECT cart_id FROM carts WHERE guest_id = $guest_id)");
     $db->query("DELETE FROM carts WHERE guest_id = $guest_id");
     setFlash('success', 'Cart cleared.');
     redirect(SITE_URL . '/guest/pages/cart.php');
 }
 
-// ── Handle Update (with addons) ──
+// ── Handle Update ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
     $cid          = (int)$_POST['cart_id'];
     $checkin_date = trim($_POST['checkin_date'] ?? '');
@@ -43,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
 
     $checkin_time_full  = sprintf('%02d:%02d:00', $ci_h24, $ci_m);
     $checkout_time_full = sprintf('%02d:%02d:00', $co_h24, $co_m);
-
     $ciMin = $ci_h24 * 60 + $ci_m;
     $coMin = $co_h24 * 60 + $co_m;
 
@@ -55,14 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
         $checkout_date = date('Y-m-d', strtotime($checkin_date . ' +1 day'));
     }
 
-    $fRow = $db->query("SELECT f.facility_id, f.max_capacity FROM facilities f JOIN carts c ON f.facility_id = c.facility_id WHERE c.cart_id = $cid")->fetch_assoc();
+    // Get facility info
+    $fRow = $db->query("
+        SELECT f.facility_id, f.max_capacity
+        FROM facilities f
+        JOIN carts c ON f.facility_id = c.facility_id
+        WHERE c.cart_id = $cid
+    ")->fetch_assoc();
     $fid    = (int)($fRow['facility_id'] ?? 0);
     $maxCap = (int)($fRow['max_capacity'] ?? 0);
 
     $pRows = $db->query("SELECT * FROM pricing WHERE facility_id = $fid")->fetch_all(MYSQLI_ASSOC);
     $pMap  = [];
     foreach ($pRows as $p) {
-        $pMap[$p['rate_type']][$p['guest_type']] = ['base_price' => (float)$p['base_price'], 'exceed_rate' => (float)$p['exceed_rate']];
+        $pMap[$p['rate_type']][$p['guest_type']] = [
+            'base_price'  => (float)$p['base_price'],
+            'exceed_rate' => (float)$p['exceed_rate'],
+        ];
     }
     $rateData  = $pMap[$rate_type] ?? [];
     $firstRate = reset($rateData);
@@ -76,14 +85,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
     }
     $subtotal = $basePrice + $exceedFee;
 
-    $stmt = $db->prepare("UPDATE carts SET checkin_date=?,checkout_date=?,checkin_time=?,checkout_time=?,kids_count=?,adults_count=?,rate_type=?,subtotal=?,exceed_fee=? WHERE cart_id=? AND guest_id=?");
-    $stmt->bind_param('ssssiisddii', $checkin_date, $checkout_date, $checkin_time_full, $checkout_time_full, $kids_count, $adults_count, $rate_type, $subtotal, $exceedFee, $cid, $guest_id);
+    // ── Server-side addon availability check (exclude own reservation if linked) ──
+    $updateErrors = [];
+    if (!empty($addon_ids)) {
+        $ciDT = $checkin_date  . ' ' . $checkin_time_full;
+        $coDT = $checkout_date . ' ' . $checkout_time_full;
+
+        // Find reservation_id linked to this cart item if any
+        $ownResRow   = $db->query("SELECT reservation_id FROM reservations WHERE guest_id = $guest_id ORDER BY reservation_id DESC LIMIT 1")->fetch_assoc();
+        $excludeClause = ''; // carts are not yet confirmed so nothing to exclude
+
+        foreach ($addon_ids as $raw_aid) {
+            $aid = (int)$raw_aid;
+            $qty = max(1, (int)($addon_qtys[$aid] ?? 1));
+
+            $aRow = $db->query("SELECT addon_name, limit_per_reservation FROM addons WHERE addon_id = $aid")->fetch_assoc();
+            if (!$aRow || !(int)$aRow['limit_per_reservation']) continue;
+
+            $limit = (int)$aRow['limit_per_reservation'];
+            $bRes  = $db->query("
+                SELECT COALESCE(SUM(ra.quantity), 0) AS booked
+                FROM reservation_addons ra
+                JOIN reservations r ON ra.reservation_id = r.reservation_id
+                WHERE ra.addon_id = $aid
+                  AND r.status IN ('pending','approved')
+                  AND CONCAT(r.checkin_date,  ' ', COALESCE(r.checkin_time,  '00:00:00')) < '$coDT'
+                  AND CONCAT(r.checkout_date, ' ', COALESCE(r.checkout_time, '23:59:59')) > '$ciDT'
+            ")->fetch_assoc();
+
+            $booked    = (int)($bRes['booked'] ?? 0);
+            $remaining = $limit - $booked;
+
+            if ($qty > $remaining) {
+                $name          = e($aRow['addon_name']);
+                $updateErrors[] = "Only $remaining slot(s) of \"$name\" available. Reduced your selection.";
+                $addon_qtys[$aid] = max(0, $remaining);
+                if ($remaining <= 0) {
+                    $addon_ids = array_filter($addon_ids, fn($x) => (int)$x !== $aid);
+                }
+            }
+        }
+    }
+
+    $stmt = $db->prepare("
+        UPDATE carts
+        SET checkin_date=?, checkout_date=?, checkin_time=?, checkout_time=?,
+            kids_count=?, adults_count=?, rate_type=?, subtotal=?, exceed_fee=?
+        WHERE cart_id=? AND guest_id=?
+    ");
+    $stmt->bind_param(
+        'ssssiisddii',
+        $checkin_date, $checkout_date, $checkin_time_full, $checkout_time_full,
+        $kids_count, $adults_count, $rate_type, $subtotal, $exceedFee,
+        $cid, $guest_id
+    );
 
     if ($stmt->execute()) {
         $db->query("DELETE FROM cart_addons WHERE cart_id = $cid");
-        foreach ($addon_ids as $aid) {
-            $aid = (int)$aid;
+        foreach ($addon_ids as $raw_aid) {
+            $aid = (int)$raw_aid;
             $qty = max(1, (int)($addon_qtys[$aid] ?? 1));
+            if ($qty <= 0) continue;
             $aStmt = $db->prepare("SELECT addon_price FROM addons WHERE addon_id = ?");
             $aStmt->bind_param('i', $aid);
             $aStmt->execute();
@@ -95,7 +157,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
                 $caStmt->execute();
             }
         }
-        setFlash('success', 'Cart item updated!');
+        $msg = !empty($updateErrors) ? 'Cart updated. Note: ' . implode(' ', $updateErrors) : 'Cart item updated!';
+        setFlash(!empty($updateErrors) ? 'error' : 'success', $msg);
     } else {
         setFlash('error', 'Could not update item.');
     }
@@ -118,13 +181,24 @@ $pricingByFacility = [];
 foreach ($cartItems as &$item) {
     $cid = (int)$item['cart_id'];
     $fid = (int)$item['fac_id'];
-    $item['addons']      = $db->query("SELECT ca.quantity, ca.subtotal, ca.addon_id, a.addon_name FROM cart_addons ca JOIN addons a ON ca.addon_id = a.addon_id WHERE ca.cart_id = $cid")->fetch_all(MYSQLI_ASSOC);
+    $item['addons']      = $db->query("
+        SELECT ca.quantity, ca.subtotal, ca.addon_id, a.addon_name, a.addon_price
+        FROM cart_addons ca
+        JOIN addons a ON ca.addon_id = a.addon_id
+        WHERE ca.cart_id = $cid
+    ")->fetch_all(MYSQLI_ASSOC);
     $item['addon_total'] = array_sum(array_column($item['addons'], 'subtotal'));
     $item['grand_total'] = (float)$item['subtotal'] + $item['addon_total'];
+
     if (!isset($pricingByFacility[$fid])) {
         $pRows = $db->query("SELECT * FROM pricing WHERE facility_id = $fid")->fetch_all(MYSQLI_ASSOC);
         $pMap  = [];
-        foreach ($pRows as $p) $pMap[$p['rate_type']][$p['guest_type']] = ['base_price' => (float)$p['base_price'], 'exceed_rate' => (float)$p['exceed_rate']];
+        foreach ($pRows as $p) {
+            $pMap[$p['rate_type']][$p['guest_type']] = [
+                'base_price'  => (float)$p['base_price'],
+                'exceed_rate' => (float)$p['exceed_rate'],
+            ];
+        }
         $pricingByFacility[$fid] = $pMap;
     }
     $item['pricingMap'] = $pricingByFacility[$fid];
@@ -134,23 +208,14 @@ unset($item);
 $cartTotal = array_sum(array_column($cartItems, 'grand_total'));
 
 function catIcon($cat) {
-    $map = [
-        'pool'=>'fa-solid fa-person-swimming',
-        'beach'=>'fa-solid fa-umbrella-beach',
-        'accommodation'=>'fa-solid fa-bed',
-        'dining'=>'fa-solid fa-utensils',
-        'spa'=>'fa-solid fa-spa',
-        'sports'=>'fa-solid fa-person-running',
-        'event'=>'fa-solid fa-calendar-days',
-        'activity'=>'fa-solid fa-bullseye',
-        'resort'=>'fa-solid fa-hotel'
-    ];
+    $map = ['pool'=>'fa-solid fa-person-swimming','beach'=>'fa-solid fa-umbrella-beach',
+            'room'=>'fa-solid fa-bed','family room'=>'fa-solid fa-people-roof',
+            'cottage'=>'fa-solid fa-house-chimney','accommodation'=>'fa-solid fa-bed',
+            'dining'=>'fa-solid fa-utensils','spa'=>'fa-solid fa-spa',
+            'sports'=>'fa-solid fa-person-running','event'=>'fa-solid fa-calendar-days',
+            'activity'=>'fa-solid fa-bullseye','resort'=>'fa-solid fa-hotel'];
     $c = strtolower(trim($cat ?? ''));
-    foreach ($map as $k => $v) {
-        if (str_contains($c, $k)) {
-            return "<i class=\"{$v}\"></i>";
-        }
-    }
+    foreach ($map as $k => $v) if (str_contains($c, $k)) return "<i class=\"$v\"></i>";
     return '<i class="fa-solid fa-star"></i>';
 }
 
@@ -158,7 +223,7 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <style>
-/* ── Time Picker ── */
+/* Time Picker */
 .time-picker-wrap{display:flex;align-items:center;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;background:#fff;transition:var(--transition);}
 .time-picker-wrap:focus-within{border-color:var(--green);}
 .tp-col{display:flex;flex-direction:column;align-items:center;border-right:1px solid var(--gray-200);}
@@ -171,26 +236,35 @@ require_once __DIR__ . '/../includes/header.php';
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{-moz-appearance:textfield;}
 
-/* ── Edit Panel ── */
+/* Edit Panel */
 .cart-edit-panel{padding:24px;background:#fafffe;border-top:3px solid var(--green);}
 .edit-sec{font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--gray-400);margin-bottom:8px;margin-top:16px;}
 .edit-sec:first-of-type{margin-top:0;}
 
-/* ── Guest Stepper ── */
+/* Guest Stepper */
 .guest-stepper{display:flex;align-items:center;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;}
 .guest-stepper button{background:var(--green-50);border:none;color:var(--green-dark);font-size:1.1rem;font-weight:700;cursor:pointer;padding:6px 14px;transition:var(--transition);}
 .guest-stepper button:hover{background:var(--green-100);}
 .guest-stepper input{border:none;border-left:1px solid var(--gray-200);border-right:1px solid var(--gray-200);text-align:center;font-weight:700;font-size:0.95rem;width:48px;padding:6px 0;outline:none;background:#fff;}
 
-/* ── Addon Cards ── */
+/* Addon cards in edit mode */
 .ea-label{display:block;border:2px solid var(--gray-200);border-radius:var(--radius);cursor:pointer;transition:var(--transition);overflow:hidden;}
-.ea-label:hover{border-color:var(--green-200);}
+.ea-label:hover:not(.ea-unavailable){border-color:var(--green-100);}
 .ea-label.active{border-color:var(--green);background:var(--green-50);}
+.ea-label.ea-unavailable{opacity:0.5;cursor:not-allowed;background:var(--gray-100);}
+.ea-label.ea-unavailable *{pointer-events:none;}
 .ea-qty-row{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid var(--green-100);background:#f0fdf4;}
 .ea-stepper{display:flex;align-items:center;border:1px solid var(--green-200);border-radius:6px;overflow:hidden;background:#fff;}
 .ea-stepper button{background:var(--green-50);border:none;color:var(--green-dark);font-weight:700;cursor:pointer;padding:2px 9px;font-size:1rem;}
 .ea-stepper button:hover{background:var(--green-100);}
 .ea-stepper input{border:none;border-left:1px solid var(--green-200);border-right:1px solid var(--green-200);text-align:center;font-weight:700;width:34px;padding:2px 0;font-size:0.82rem;outline:none;}
+
+/* Availability badges in edit mode */
+.ea-avail-badge{font-size:0.65rem;font-weight:700;padding:1px 6px;border-radius:var(--radius-full);white-space:nowrap;}
+.ea-avail-ok  {background:var(--green-light);color:var(--green-dark);}
+.ea-avail-low {background:var(--yellow-light);color:var(--yellow-dark);}
+.ea-avail-none{background:var(--red-light);color:#991b1b;}
+.ea-avail-unlim{background:var(--gray-100);color:var(--gray-500);}
 
 /* Price preview */
 .edit-price-preview{background:var(--green-50);border-radius:var(--radius);padding:14px 16px;margin-top:16px;}
@@ -244,10 +318,12 @@ input[type=number]{-moz-appearance:textfield;}
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
                 <div>
                   <h3 style="font-weight:700;font-size:1rem;color:var(--gray-800);margin-bottom:2px;"><?= e($item['facility_name']) ?></h3>
-                  <?php if ($item['category']): ?><span style="font-size:0.72rem;color:var(--gray-400);"><?= catIcon($item['category']) ?> <?= e(ucfirst($item['category'])) ?></span><?php endif; ?>
+                  <?php if ($item['category']): ?>
+                    <span style="font-size:0.72rem;color:var(--gray-400);"><?= catIcon($item['category']) ?> <?= e(ucfirst($item['category'])) ?></span>
+                  <?php endif; ?>
                 </div>
                 <span style="padding:4px 12px;border-radius:var(--radius-full);font-size:0.75rem;font-weight:700;white-space:nowrap;background:<?= $item['rate_type']==='daytime'?'#fef9c3':'#dbeafe' ?>;color:<?= $item['rate_type']==='daytime'?'#854d0e':'#1e40af' ?>;">
-                  <?= $item['rate_type']==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight' ?>
+                  <?= $item['rate_type']==='daytime'?'☀️ Daytime':'🌙 Overnight' ?>
                 </span>
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
@@ -256,7 +332,7 @@ input[type=number]{-moz-appearance:textfield;}
                   <p style="font-weight:700;color:var(--gray-800);"><?= date('M d, Y', strtotime($item['checkin_date'])) ?></p>
                   <p style="color:var(--green-dark);font-size:0.78rem;"><?= date('g:i A', strtotime($item['checkin_time'])) ?></p>
                 </div>
-                <div style="display:flex;align-items:center;color:var(--gray-300);font-size:1.2rem;">→</div>
+                <div style="display:flex;align-items:center;color:var(--gray-300);">→</div>
                 <div style="background:var(--green-50);border-radius:var(--radius-sm);padding:8px 12px;font-size:0.82rem;">
                   <p style="color:var(--gray-400);font-size:0.7rem;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Check-out</p>
                   <p style="font-weight:700;color:var(--gray-800);"><?= date('M d, Y', strtotime($item['checkout_date'])) ?></p>
@@ -289,7 +365,7 @@ input[type=number]{-moz-appearance:textfield;}
               </div>
             </div>
           </div>
-        </div>
+        </div><!-- /view -->
 
         <!-- EDIT MODE -->
         <div id="edit_<?= $cid ?>" style="display:none;">
@@ -311,12 +387,11 @@ input[type=number]{-moz-appearance:textfield;}
 
               <!-- Times -->
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
-                <!-- Check-in time -->
                 <div>
                   <p class="edit-sec" style="margin-top:0;">⏰ Check-in <small style="font-weight:400;color:var(--gray-400);">(min 2PM)</small></p>
-                  <input type="hidden" name="ci_hour"   id="eci_h_<?= $cid ?>"   value="<?= date('g',strtotime($item['checkin_time'])) ?>"/>
-                  <input type="hidden" name="ci_minute" id="eci_m_<?= $cid ?>"   value="<?= (int)date('i',strtotime($item['checkin_time'])) ?>"/>
-                  <input type="hidden" name="ci_ampm"   id="eci_ap_<?= $cid ?>"  value="<?= date('A',strtotime($item['checkin_time'])) ?>"/>
+                  <input type="hidden" name="ci_hour"   id="eci_h_<?= $cid ?>"  value="<?= date('g',strtotime($item['checkin_time'])) ?>"/>
+                  <input type="hidden" name="ci_minute" id="eci_m_<?= $cid ?>"  value="<?= (int)date('i',strtotime($item['checkin_time'])) ?>"/>
+                  <input type="hidden" name="ci_ampm"   id="eci_ap_<?= $cid ?>" value="<?= date('A',strtotime($item['checkin_time'])) ?>"/>
                   <div class="time-picker-wrap">
                     <div class="tp-col">
                       <button type="button" class="tp-btn" onclick="eStep(<?= $cid ?>,'ci','h',1)">▲</button>
@@ -336,12 +411,11 @@ input[type=number]{-moz-appearance:textfield;}
                   </div>
                   <p id="eciErr_<?= $cid ?>" style="font-size:0.74rem;color:var(--red);margin-top:4px;"></p>
                 </div>
-                <!-- Check-out time -->
                 <div>
                   <p class="edit-sec" style="margin-top:0;">⏰ Check-out</p>
-                  <input type="hidden" name="co_hour"   id="eco_h_<?= $cid ?>"   value="<?= date('g',strtotime($item['checkout_time'])) ?>"/>
-                  <input type="hidden" name="co_minute" id="eco_m_<?= $cid ?>"   value="<?= (int)date('i',strtotime($item['checkout_time'])) ?>"/>
-                  <input type="hidden" name="co_ampm"   id="eco_ap_<?= $cid ?>"  value="<?= date('A',strtotime($item['checkout_time'])) ?>"/>
+                  <input type="hidden" name="co_hour"   id="eco_h_<?= $cid ?>"  value="<?= date('g',strtotime($item['checkout_time'])) ?>"/>
+                  <input type="hidden" name="co_minute" id="eco_m_<?= $cid ?>"  value="<?= (int)date('i',strtotime($item['checkout_time'])) ?>"/>
+                  <input type="hidden" name="co_ampm"   id="eco_ap_<?= $cid ?>" value="<?= date('A',strtotime($item['checkout_time'])) ?>"/>
                   <div class="time-picker-wrap">
                     <div class="tp-col">
                       <button type="button" class="tp-btn" onclick="eStep(<?= $cid ?>,'co','h',1)">▲</button>
@@ -362,7 +436,7 @@ input[type=number]{-moz-appearance:textfield;}
                 </div>
               </div>
 
-              <!-- Auto checkout date + badge -->
+              <!-- Auto checkout date + rate badge -->
               <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:160px;">
                   <p style="font-size:0.74rem;color:var(--gray-400);font-weight:600;margin-bottom:4px;">Check-out Date (auto)</p>
@@ -395,17 +469,22 @@ input[type=number]{-moz-appearance:textfield;}
                   </div>
                 </div>
               </div>
-              <?php if ($maxCap>0): ?><p style="font-size:0.74rem;color:var(--gray-400);margin-top:6px;">Max capacity: <strong><?= $maxCap ?></strong>. Excess guests incur additional fees.</p><?php endif; ?>
+              <?php if ($maxCap>0): ?>
+                <p style="font-size:0.74rem;color:var(--gray-400);margin-top:6px;">Max capacity: <strong><?= $maxCap ?></strong>. Excess guests incur additional fees.</p>
+              <?php endif; ?>
 
               <!-- Add-ons -->
               <?php if (!empty($allAddons)): ?>
-              <p class="edit-sec">✨ Add-on Services</p>
+              <p class="edit-sec">✨ Add-on Services
+                <span id="eAvailStatus_<?= $cid ?>" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-400);margin-left:6px;font-size:0.72rem;"></span>
+              </p>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                 <?php foreach ($allAddons as $addon):
                   $aid     = $addon['addon_id'];
                   $checked = in_array($aid, $currentAddonIds);
                   $qty     = $currentAddonQtys[$aid] ?? 1;
                   $price   = (float)$addon['addon_price'];
+                  $limit   = (int)($addon['limit_per_reservation'] ?? 0);
                 ?>
                 <label class="ea-label <?= $checked?'active':'' ?>" id="eACard_<?= $cid ?>_<?= $aid ?>">
                   <input type="checkbox" name="addon_ids[]" value="<?= $aid ?>" style="display:none;"
@@ -414,8 +493,15 @@ input[type=number]{-moz-appearance:textfield;}
                   <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;">
                     <div style="width:34px;height:34px;background:var(--green-50);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">✨</div>
                     <div style="flex:1;min-width:0;">
-                      <p style="font-weight:700;font-size:0.82rem;color:var(--gray-800);margin-bottom:2px;"><?= e($addon['addon_name']) ?></p>
-                      <?php if (!empty($addon['addon_description'])): ?><p style="font-size:0.72rem;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($addon['addon_description']) ?></p><?php endif; ?>
+                      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:2px;">
+                        <p style="font-weight:700;font-size:0.82rem;color:var(--gray-800);"><?= e($addon['addon_name']) ?></p>
+                        <span class="ea-avail-badge ea-avail-unlim" id="eAvailBadge_<?= $cid ?>_<?= $aid ?>">
+                          <?= $limit ? "limit: $limit" : 'unlimited' ?>
+                        </span>
+                      </div>
+                      <?php if (!empty($addon['addon_description'])): ?>
+                        <p style="font-size:0.72rem;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($addon['addon_description']) ?></p>
+                      <?php endif; ?>
                       <p style="font-size:0.78rem;font-weight:700;color:var(--green-dark);"><?= peso($price) ?></p>
                     </div>
                     <div id="eACheck_<?= $cid ?>_<?= $aid ?>" style="width:20px;height:20px;border-radius:50%;border:2px solid <?= $checked?'var(--green)':'var(--gray-200)' ?>;background:<?= $checked?'var(--green)':'transparent' ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -426,8 +512,10 @@ input[type=number]{-moz-appearance:textfield;}
                     <span style="font-size:0.74rem;color:var(--gray-600);font-weight:600;">Qty:</span>
                     <div class="ea-stepper">
                       <button type="button" onclick="eAddonStep(<?= $cid ?>,<?= $aid ?>,<?= $price ?>,-1)">−</button>
-                      <input type="number" name="addon_qtys[<?= $aid ?>]" id="eAQtyI_<?= $cid ?>_<?= $aid ?>"
-                             value="<?= $qty ?>" min="1" max="20"
+                      <input type="number" name="addon_qtys[<?= $aid ?>]"
+                             id="eAQtyI_<?= $cid ?>_<?= $aid ?>"
+                             value="<?= $qty ?>" min="1" max="<?= $limit ?: 9999 ?>"
+                             data-limit="<?= $limit ?>"
                              onchange="eAddonSub(<?= $cid ?>,<?= $aid ?>,<?= $price ?>)"/>
                       <button type="button" onclick="eAddonStep(<?= $cid ?>,<?= $aid ?>,<?= $price ?>,1)">+</button>
                     </div>
@@ -459,14 +547,13 @@ input[type=number]{-moz-appearance:textfield;}
                 </div>
               </div>
 
-              <!-- Actions -->
               <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
                 <button type="button" onclick="toggleEdit(<?= $cid ?>)" class="btn btn-sm" style="border:2px solid var(--gray-200);color:var(--gray-600);">Cancel</button>
                 <button type="submit" class="btn btn-primary btn-sm">✔ Save Changes</button>
               </div>
             </div>
           </form>
-        </div>
+        </div><!-- /edit -->
 
       </div>
       <?php endforeach; ?>
@@ -504,7 +591,9 @@ input[type=number]{-moz-appearance:textfield;}
 </div>
 
 <script>
-// Per-cart time picker state
+const AVAIL_URL = '<?= SITE_URL ?>/guest/pages/addon_availability.php';
+
+// Per-cart state
 const eTP = {};
 <?php foreach ($cartItems as $item):
   $cid  = $item['cart_id'];
@@ -516,23 +605,30 @@ const eTP = {};
   $coAp = date('A', strtotime($item['checkout_time']));
 ?>
 eTP[<?= $cid ?>] = {
-  ci:{ hour:<?= $ciH ?>, minute:<?= $ciM ?>, ampm:'<?= $ciAp ?>' },
-  co:{ hour:<?= $coH ?>, minute:<?= $coM ?>, ampm:'<?= $coAp ?>' },
-  pm:<?= json_encode($item['pricingMap']) ?>,
-  max:<?= (int)$item['max_capacity'] ?>
+  ci:  { hour:<?= $ciH ?>, minute:<?= $ciM ?>, ampm:'<?= $ciAp ?>' },
+  co:  { hour:<?= $coH ?>, minute:<?= $coM ?>, ampm:'<?= $coAp ?>' },
+  pm:  <?= json_encode($item['pricingMap']) ?>,
+  max: <?= (int)$item['max_capacity'] ?>,
+  availTimer: null,
 };
 <?php endforeach; ?>
 
-function ePad(n){ return String(n).padStart(2,'0'); }
+function ePad(n) { return String(n).padStart(2,'0'); }
 
-function eToMin(cid, p){
-  const s=eTP[cid][p];
-  let h=s.ampm==='PM'?(s.hour===12?12:s.hour+12):(s.hour===12?0:s.hour);
-  return h*60+s.minute;
+function eToMin(cid, p) {
+  const s = eTP[cid][p];
+  const h24 = s.ampm==='PM' ? (s.hour===12?12:s.hour+12) : (s.hour===12?0:s.hour);
+  return h24*60+s.minute;
 }
 
-function eRender(cid, p){
-  const s=eTP[cid][p], pre=p==='ci'?'eci':'eco';
+function eTo24str(cid, p) {
+  const s = eTP[cid][p];
+  const h24 = s.ampm==='PM' ? (s.hour===12?12:s.hour+12) : (s.hour===12?0:s.hour);
+  return ePad(h24)+':'+ePad(s.minute)+':00';
+}
+
+function eRender(cid, p) {
+  const s = eTP[cid][p], pre = p==='ci'?'eci':'eco';
   document.getElementById(pre+'H_'+cid).textContent  = ePad(s.hour);
   document.getElementById(pre+'M_'+cid).textContent  = ePad(s.minute);
   document.getElementById(pre+'_h_'+cid).value       = s.hour;
@@ -543,125 +639,208 @@ function eRender(cid, p){
   eChange(cid);
 }
 
-function eStep(cid, p, part, d){
-  const s=eTP[cid][p];
-  if(part==='h'){ s.hour+=d; if(s.hour>12)s.hour=1; if(s.hour<1)s.hour=12; }
-  else{ s.minute+=d*5; if(s.minute>=60)s.minute=0; if(s.minute<0)s.minute=55; }
-  eRender(cid,p);
+function eStep(cid, p, part, d) {
+  const s = eTP[cid][p];
+  if (part==='h') { s.hour+=d; if(s.hour>12)s.hour=1; if(s.hour<1)s.hour=12; }
+  else { s.minute+=d*5; if(s.minute>=60)s.minute=0; if(s.minute<0)s.minute=55; }
+  eRender(cid, p);
 }
 
-function eAmPm(cid,p,val){ eTP[cid][p].ampm=val; eRender(cid,p); }
+function eAmPm(cid, p, val) { eTP[cid][p].ampm=val; eRender(cid,p); }
 
-function eRateType(cid){
+function eRateType(cid) {
   const ci=eToMin(cid,'ci'), co=eToMin(cid,'co');
-  return (co>ci && co<=18*60)?'daytime':'overnight';
+  return (co>ci && co<=18*60) ? 'daytime' : 'overnight';
 }
 
-function eFmtDate(s){
-  const d=new Date(s+'T12:00:00');
-  return d.toLocaleDateString('en-PH',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+function eFmtDate(s) {
+  return new Date(s+'T12:00:00').toLocaleDateString('en-PH',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
 }
 
-function eChange(cid){
-  const ci     = document.getElementById('eDate_'+cid)?.value||'';
+function eAddDays(dateStr, n) {
+  const d = new Date(dateStr+'T12:00:00'); d.setDate(d.getDate()+n);
+  return d.toISOString().slice(0,10);
+}
+
+function eChange(cid) {
+  const ci    = document.getElementById('eDate_'+cid)?.value||'';
+  const rt    = eRateType(cid);
+  const badge = document.getElementById('eRateBadge_'+cid);
+  const coDateEl = document.getElementById('eCoDate_'+cid);
+  const ciErr    = document.getElementById('eciErr_'+cid);
+  const ciMin    = eToMin(cid,'ci');
+
+  ciErr.textContent = ciMin<14*60 ? 'Check-in must be 2:00 PM or later.' : '';
+
+  const coDate = rt==='daytime' ? ci : (ci ? eAddDays(ci,1) : '');
+  coDateEl.value = !ci ? 'Select check-in date first' : (coDate ? eFmtDate(coDate) : '');
+
+  badge.innerHTML        = rt==='daytime' ? '☀️ Daytime' : '🌙 Overnight';
+  badge.style.background = rt==='daytime' ? '#fef9c3' : '#dbeafe';
+  badge.style.color      = rt==='daytime' ? '#854d0e' : '#1e40af';
+
+  eRecalc(cid);
+  eScheduleAvail(cid);
+}
+
+// ── Availability for edit mode ──
+function eScheduleAvail(cid) {
+  clearTimeout(eTP[cid].availTimer);
+  eTP[cid].availTimer = setTimeout(() => eFetchAvail(cid), 600);
+}
+
+function eFetchAvail(cid) {
+  const ci = document.getElementById('eDate_'+cid)?.value;
+  if (!ci) return;
+
   const rt     = eRateType(cid);
-  const badge  = document.getElementById('eRateBadge_'+cid);
-  const coDate = document.getElementById('eCoDate_'+cid);
-  const ciErr  = document.getElementById('eciErr_'+cid);
-  const ciMin  = eToMin(cid,'ci');
+  const coDate = rt==='daytime' ? ci : eAddDays(ci,1);
+  const ciTime = eTo24str(cid,'ci');
+  const coTime = eTo24str(cid,'co');
 
-  ciErr.textContent = ciMin<14*60?'Check-in must be 2:00 PM or later.':'';
+  const statusEl = document.getElementById('eAvailStatus_'+cid);
+  if (statusEl) statusEl.textContent = '(checking…)';
 
-  if(!ci){ coDate.value='Select check-in date first'; }
-  else if(rt==='daytime'){ coDate.value=eFmtDate(ci); }
-  else{
-    const d=new Date(ci+'T12:00:00'); d.setDate(d.getDate()+1);
-    coDate.value=eFmtDate(d.toISOString().slice(0,10));
+  // Mark all badges as loading
+  document.querySelectorAll(`[id^="eAvailBadge_${cid}_"]`).forEach(b => {
+    b.className = 'ea-avail-badge ea-avail-unlim'; b.textContent = '…';
+  });
+
+  const fd = new FormData();
+  fd.append('checkin_date',  ci);
+  fd.append('checkout_date', coDate);
+  fd.append('checkin_time',  ciTime);
+  fd.append('checkout_time', coTime);
+  // No exclude_reservation_id since this is a cart item, not yet a reservation
+
+  fetch(AVAIL_URL, { method:'POST', body:fd })
+    .then(r => r.json())
+    .then(data => eApplyAvail(cid, data))
+    .catch(() => {
+      if (statusEl) statusEl.textContent = '';
+    });
+}
+
+function eApplyAvail(cid, data) {
+  const statusEl = document.getElementById('eAvailStatus_'+cid);
+  if (statusEl) statusEl.textContent = '(updated)';
+
+  for (const [aidStr, remaining] of Object.entries(data)) {
+    const aid   = parseInt(aidStr);
+    const card  = document.getElementById('eACard_'+cid+'_'+aid);
+    const badge = document.getElementById('eAvailBadge_'+cid+'_'+aid);
+    const cb    = card?.querySelector('input[type="checkbox"]');
+    const qtyIn = document.getElementById('eAQtyI_'+cid+'_'+aid);
+    if (!card || !badge) continue;
+
+    if (remaining === null) {
+      badge.className = 'ea-avail-badge ea-avail-unlim'; badge.textContent = 'unlimited';
+      card.classList.remove('ea-unavailable');
+      if (cb) cb.disabled = false;
+    } else if (remaining === 0) {
+      badge.className = 'ea-avail-badge ea-avail-none'; badge.textContent = 'fully booked';
+      card.classList.add('ea-unavailable'); card.classList.remove('active');
+      if (cb) { cb.checked = false; cb.disabled = true; }
+      document.getElementById('eAQty_'+cid+'_'+aid).style.display = 'none';
+      document.getElementById('eACheck_'+cid+'_'+aid).style.background = '';
+      document.getElementById('eACheck_'+cid+'_'+aid).style.borderColor = 'var(--gray-200)';
+      document.getElementById('eACheck_'+cid+'_'+aid).innerHTML = '';
+    } else {
+      const cls = remaining <= 3 ? 'ea-avail-low' : 'ea-avail-ok';
+      badge.className = 'ea-avail-badge '+cls; badge.textContent = remaining+' left';
+      card.classList.remove('ea-unavailable');
+      if (cb) cb.disabled = false;
+      if (qtyIn) {
+        qtyIn.max = remaining;
+        if (parseInt(qtyIn.value) > remaining) {
+          qtyIn.value = remaining;
+          eAddonSub(cid, aid, parseFloat(document.getElementById('eASub_'+cid+'_'+aid)?.dataset.unit||0));
+        }
+      }
+    }
   }
-
-  badge.innerHTML        = rt==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight';
-  badge.style.background = rt==='daytime'?'#fef9c3':'#dbeafe';
-  badge.style.color      = rt==='daytime'?'#854d0e':'#1e40af';
   eRecalc(cid);
 }
 
-function eGuest(cid,id,d){
-  const el=document.getElementById(id);
-  el.value=Math.max(0,parseInt(el.value||0)+d);
+function eGuest(cid, id, d) {
+  const el = document.getElementById(id);
+  el.value = Math.max(0, parseInt(el.value||0)+d);
   eRecalc(cid);
 }
 
-function eRecalc(cid){
+function eRecalc(cid) {
   const rt     = eRateType(cid);
   const rd     = eTP[cid].pm[rt]||{};
   const fk     = Object.keys(rd)[0];
-  const base   = fk?rd[fk].base_price:0;
+  const base   = fk ? rd[fk].base_price : 0;
   const adults = parseInt(document.getElementById('eAdults_'+cid)?.value||0);
   const kids   = parseInt(document.getElementById('eKids_'+cid)?.value||0);
   const total  = adults+kids;
   const maxC   = eTP[cid].max;
-  let exc=0;
-  if(maxC>0&&total>maxC){
-    const er=(rd['adults']&&rd['adults'].exceed_rate)?rd['adults'].exceed_rate:((rd['general']&&rd['general'].exceed_rate)?rd['general'].exceed_rate:0);
-    exc=(total-maxC)*er;
+  let exc = 0;
+  if (maxC>0 && total>maxC) {
+    const er = (rd['adults']?.exceed_rate) ?? (rd['general']?.exceed_rate) ?? 0;
+    exc = (total-maxC)*er;
   }
-  let addons=0;
-  document.querySelectorAll(`#eForm_${cid} input[name="addon_ids[]"]:checked`).forEach(cb=>{
-    const aid=cb.value;
-    const qi=document.getElementById('eAQtyI_'+cid+'_'+aid);
-    const si=document.getElementById('eASub_'+cid+'_'+aid);
-    if(qi&&si){ addons+=parseFloat(si.dataset.unit||0)*parseInt(qi.value||1); }
+  let addons = 0;
+  document.querySelectorAll(`#eForm_${cid} input[name="addon_ids[]"]:checked`).forEach(cb => {
+    const aid = cb.value;
+    const qi  = document.getElementById('eAQtyI_'+cid+'_'+aid);
+    const si  = document.getElementById('eASub_'+cid+'_'+aid);
+    if (qi && si) addons += parseFloat(si.dataset.unit||0)*parseInt(qi.value||1);
   });
-  const grand=base+exc+addons;
-  document.getElementById('eBBase_'+cid).textContent='₱'+base.toLocaleString();
-  const er2=document.getElementById('eBExcRow_'+cid);
-  er2.style.display=exc>0?'flex':'none';
-  if(exc>0) document.getElementById('eBExc_'+cid).textContent='+₱'+exc.toLocaleString();
-  const ar=document.getElementById('eBAddRow_'+cid);
-  ar.style.display=addons>0?'flex':'none';
-  if(addons>0) document.getElementById('eBAdd_'+cid).textContent='₱'+addons.toLocaleString();
-  document.getElementById('eBTotal_'+cid).textContent='₱'+grand.toLocaleString();
+  const grand = base+exc+addons;
+  document.getElementById('eBBase_'+cid).textContent = '₱'+base.toLocaleString();
+  const er2 = document.getElementById('eBExcRow_'+cid);
+  er2.style.display = exc>0?'flex':'none';
+  if (exc>0) document.getElementById('eBExc_'+cid).textContent = '+₱'+exc.toLocaleString();
+  const ar = document.getElementById('eBAddRow_'+cid);
+  ar.style.display = addons>0?'flex':'none';
+  if (addons>0) document.getElementById('eBAdd_'+cid).textContent = '₱'+addons.toLocaleString();
+  document.getElementById('eBTotal_'+cid).textContent = '₱'+grand.toLocaleString();
 }
 
-function eToggleAddon(cid,aid,price){
+function eToggleAddon(cid, aid, price) {
   const cb   = document.querySelector(`#eForm_${cid} input[name="addon_ids[]"][value="${aid}"]`);
   const card = document.getElementById('eACard_'+cid+'_'+aid);
   const qty  = document.getElementById('eAQty_'+cid+'_'+aid);
   const chk  = document.getElementById('eACheck_'+cid+'_'+aid);
-  if(cb.checked){
-    card.classList.add('active');
-    qty.style.display='flex';
+  if (cb.checked) {
+    card.classList.add('active'); qty.style.display='flex';
     chk.style.background='var(--green)'; chk.style.borderColor='var(--green)';
     chk.innerHTML='<span style="color:#fff;font-size:0.65rem;">✓</span>';
   } else {
-    card.classList.remove('active');
-    qty.style.display='none';
-    chk.style.background=''; chk.style.borderColor='var(--gray-200)';
-    chk.innerHTML='';
+    card.classList.remove('active'); qty.style.display='none';
+    chk.style.background=''; chk.style.borderColor='var(--gray-200)'; chk.innerHTML='';
   }
   eRecalc(cid);
 }
 
-function eAddonStep(cid,aid,price,d){
-  const i=document.getElementById('eAQtyI_'+cid+'_'+aid);
-  i.value=Math.max(1,parseInt(i.value||1)+d);
-  eAddonSub(cid,aid,price);
+function eAddonStep(cid, aid, price, d) {
+  const i   = document.getElementById('eAQtyI_'+cid+'_'+aid);
+  const max = parseInt(i.max)||9999;
+  i.value   = Math.min(max, Math.max(1, parseInt(i.value||1)+d));
+  eAddonSub(cid, aid, price);
 }
 
-function eAddonSub(cid,aid,price){
-  const i=document.getElementById('eAQtyI_'+cid+'_'+aid);
-  const s=document.getElementById('eASub_'+cid+'_'+aid);
-  if(s){ s.textContent='₱'+(price*parseInt(i.value||1)).toLocaleString(); }
+function eAddonSub(cid, aid, price) {
+  const i = document.getElementById('eAQtyI_'+cid+'_'+aid);
+  const s = document.getElementById('eASub_'+cid+'_'+aid);
+  if (s) s.textContent = '₱'+(price*parseInt(i.value||1)).toLocaleString();
   eRecalc(cid);
 }
 
-function toggleEdit(cid){
-  const v=document.getElementById('view_'+cid);
-  const e=document.getElementById('edit_'+cid);
-  const open=e.style.display!=='none';
-  v.style.display=open?'':'none';
-  e.style.display=open?'none':'block';
-  if(!open){ eChange(cid); eRecalc(cid); }
+function toggleEdit(cid) {
+  const v    = document.getElementById('view_'+cid);
+  const e    = document.getElementById('edit_'+cid);
+  const open = e.style.display !== 'none';
+  v.style.display = open ? ''     : 'none';
+  e.style.display = open ? 'none' : 'block';
+  if (!open) {
+    // Opening edit panel — trigger availability check for current dates
+    eChange(cid);
+    eRecalc(cid);
+  }
 }
 </script>
 
