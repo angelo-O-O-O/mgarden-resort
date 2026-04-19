@@ -736,3 +736,45 @@ textarea.form-control--plain { resize: vertical; }
   .pricing-input-row input:nth-child(4),
   .pricing-input-row button { display: none; }
 }
+
+/* ════════════════════════
+   PAGE TABS (facilities)
+════════════════════════ */
+.page-tabs {
+  display: flex; gap: 4px;
+  border-bottom: 2px solid var(--gray-200);
+  margin-bottom: 4px;
+}
+.page-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  font-size: 0.88rem; font-weight: 600;
+  color: var(--gray-500);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--transition);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.page-tab:hover { color: var(--green); background: var(--green-50); }
+.page-tab.active { color: var(--green); border-bottom-color: var(--green); background: var(--green-50); }
+.page-tab i { font-size: 0.82rem; }
+
+/* ════════════════════════
+   APPROVE CONFIRM BOX
+════════════════════════ */
+.approve-confirm-box {
+  display: flex; align-items: center; gap: 18px;
+  background: var(--green-50); border: 1.5px solid var(--green-100);
+  border-radius: var(--radius); padding: 20px;
+}
+.approve-icon {
+  width: 52px; height: 52px; flex-shrink: 0;
+  background: var(--green-light); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--green); font-size: 1.4rem;
+}
+
+/* ════════════════════════
+   CANCELLED CALENDAR PILL
+════════════════════════ */
+.cal-pill--cancelled { background: var(--red-light); color: #991b1b; }
