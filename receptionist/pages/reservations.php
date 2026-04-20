@@ -5,7 +5,7 @@ requireReceptionistLogin();
 $db = getDB();
 
 // ── FILTER ──
-$allowedStatuses = ['all', 'pending', 'approved', 'cancelled', 'completed'];
+$allowedStatuses = ['all', 'pending', 'approved', 'cancelled'];
 $filterStatus    = $_GET['status'] ?? 'all';
 if (!in_array($filterStatus, $allowedStatuses)) $filterStatus = 'all';
 
@@ -61,7 +61,6 @@ function statusBadge($status) {
         'pending'   => 'badge-yellow',
         'approved'  => 'badge-green',
         'cancelled' => 'badge-red',
-        'completed' => 'badge-blue',
     ];
     return '<span class="status-badge ' . ($colors[$status] ?? 'badge-gray') . '">' . ucfirst($status) . '</span>';
 }
@@ -86,7 +85,6 @@ require_once __DIR__ . '/../includes/header.php';
       'pending'   => ['label' => 'Pending',   'icon' => 'fa-solid fa-clock'],
       'approved'  => ['label' => 'Approved',  'icon' => 'fa-solid fa-circle-check'],
       'cancelled' => ['label' => 'Cancelled', 'icon' => 'fa-solid fa-circle-xmark'],
-      'completed' => ['label' => 'Completed', 'icon' => 'fa-solid fa-flag-checkered'],
   ];
   foreach ($filterDefs as $key => $def):
       $isActive = $filterStatus === $key;

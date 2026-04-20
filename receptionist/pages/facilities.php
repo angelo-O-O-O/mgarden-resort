@@ -21,11 +21,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $max_capacity = (int)($_POST['max_capacity']  ?? 0);
         $category     = trim($_POST['category']       ?? '');
         $availability = ($_POST['availability'] ?? '') === 'unavailable' ? 'unavailable' : 'available';
-        $photo        = null;
-        if (!empty($_FILES['photo']['tmp_name'])) $photo = file_get_contents($_FILES['photo']['tmp_name']);
-
-        $stmt = $db->prepare("INSERT INTO facilities (facility_name,description,max_capacity,category,availability,photo) VALUES (?,?,?,?,?,?)");
-        $stmt->bind_param('ssissa', $name, $description, $max_capacity, $category, $availability, $photo);
+        
+        if (!empty($_FILES['photo']['tmp_name'])) {
+            $photo = file_get_contents($_FILES['photo']['tmp_name']);
+            $stmt = $db->prepare("INSERT INTO facilities (facility_name,description,max_capacity,category,availability,photo) VALUES (?,?,?,?,?,?)");
+            $stmt->bind_param('ssisss', $name, $description, $max_capacity, $category, $availability, $photo);
+        } else {
+            $stmt = $db->prepare("INSERT INTO facilities (facility_name,description,max_capacity,category,availability) VALUES (?,?,?,?,?)");
+            $stmt->bind_param('ssis', $name, $description, $max_capacity, $category, $availability);
+        }
         $stmt->execute();
         $fid = $db->insert_id;
         savePricing($db, $fid, $_POST['pricing'] ?? []);
@@ -45,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_FILES['photo']['tmp_name'])) {
             $photo = file_get_contents($_FILES['photo']['tmp_name']);
             $stmt  = $db->prepare("UPDATE facilities SET facility_name=?,description=?,max_capacity=?,category=?,availability=?,photo=?,updated_at=NOW() WHERE facility_id=?");
-            $stmt->bind_param('ssissai', $name,$description,$max_capacity,$category,$availability,$photo,$id);
+            $stmt->bind_param('ssisssi', $name,$description,$max_capacity,$category,$availability,$photo,$id);
         } else {
             $stmt = $db->prepare("UPDATE facilities SET facility_name=?,description=?,max_capacity=?,category=?,availability=?,updated_at=NOW() WHERE facility_id=?");
             $stmt->bind_param('ssissi', $name,$description,$max_capacity,$category,$availability,$id);
