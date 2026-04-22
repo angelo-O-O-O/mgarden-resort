@@ -12,6 +12,10 @@ $stmt->execute();
 $facility = $stmt->get_result()->fetch_assoc();
 if (!$facility) redirect(SITE_URL . '/guest/index.php');
 
+$category   = strtolower(trim($facility['category'] ?? ''));
+$isPool     = str_contains($category, 'pool');
+$maxCap     = (int)($facility['max_capacity'] ?? 0);
+
 $pricingRows = $db->query("
     SELECT * FROM pricing WHERE facility_id = $facility_id
     ORDER BY rate_type ASC, guest_type ASC
@@ -29,6 +33,32 @@ $sharedBase = count($allPrices) === 1 ? (float)$allPrices[0] : null;
 
 $addons = $db->query("SELECT * FROM addons ORDER BY addon_name ASC")->fetch_all(MYSQLI_ASSOC);
 
+// Pre-fetch blocked dates for current month (for date picker init)
+$today      = date('Y-m-d');
+$thisMonth  = date('Y-m');
+$blockedDatesInit = [];
+if (!$isPool) {
+    $monthStart = date('Y-m-01');
+    $monthEnd   = date('Y-m-t');
+    $rows = $db->query("
+        SELECT checkin_date, checkout_date FROM reservations
+        WHERE facility_id = $facility_id
+          AND status IN ('pending','approved')
+          AND checkin_date <= '$monthEnd'
+          AND checkout_date >= '$monthStart'
+    ")->fetch_all(MYSQLI_ASSOC);
+    foreach ($rows as $r) {
+        $start = new DateTime($r['checkin_date']);
+        $end   = new DateTime($r['checkout_date']);
+        $cur   = clone $start;
+        while ($cur <= $end) {
+            $key = $cur->format('Y-m-d');
+            if (!in_array($key, $blockedDatesInit)) $blockedDatesInit[] = $key;
+            $cur->modify('+1 day');
+        }
+    }
+}
+
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
@@ -45,13 +75,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
     $adults_count = max(0, (int)($_POST['adults_count'] ?? 0));
     $addon_ids    = $_POST['addon_ids']  ?? [];
     $addon_qtys   = $_POST['addon_qtys'] ?? [];
+    $force_add    = ($_POST['force_add'] ?? '0') === '1'; // guest confirmed despite conflict
 
     $ci_h24 = $ci_ampm === 'PM' ? ($ci_h < 12 ? $ci_h + 12 : $ci_h) : ($ci_h === 12 ? 0 : $ci_h);
     $co_h24 = $co_ampm === 'PM' ? ($co_h < 12 ? $co_h + 12 : $co_h) : ($co_h === 12 ? 0 : $co_h);
 
     $checkin_time_full  = sprintf('%02d:%02d:00', $ci_h24, $ci_m);
     $checkout_time_full = sprintf('%02d:%02d:00', $co_h24, $co_m);
-
     $ciMin = $ci_h24 * 60 + $ci_m;
     $coMin = $co_h24 * 60 + $co_m;
 
@@ -63,13 +93,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
         $checkout_date = $checkin_date ? date('Y-m-d', strtotime($checkin_date . ' +1 day')) : '';
     }
 
-    // Basic validation
     if (empty($checkin_date))              $errors[] = 'Check-in date is required.';
     elseif ($checkin_date < date('Y-m-d')) $errors[] = 'Check-in date cannot be in the past.';
     if ($ci_h24 < 14)                      $errors[] = 'Check-in time must be 2:00 PM or later.';
     if ($kids_count + $adults_count === 0) $errors[] = 'At least one guest is required.';
 
-    // Server-side addon availability check
+    // ── Server-side facility conflict check ──
+    $facilityConflict = false;
+    if (empty($errors)) {
+        $ciDT      = $checkin_date  . ' ' . $checkin_time_full;
+        $coDT      = $checkout_date . ' ' . $checkout_time_full;
+        $numGuests = $kids_count + $adults_count;
+
+        if ($isPool && $maxCap > 0) {
+            $bRes = $db->query("
+                SELECT COALESCE(SUM(num_guests),0) AS booked
+                FROM reservations
+                WHERE facility_id = $facility_id
+                  AND status IN ('pending','approved')
+                  AND CONCAT(checkin_date,' ',COALESCE(checkin_time,'00:00:00'))  < '$coDT'
+                  AND CONCAT(checkout_date,' ',COALESCE(checkout_time,'23:59:59')) > '$ciDT'
+            ")->fetch_assoc();
+            $booked    = (int)($bRes['booked'] ?? 0);
+            $remaining = $maxCap - $booked;
+            if ($booked + $numGuests > $maxCap) {
+                $facilityConflict = true;
+                if (!$force_add) {
+                    $errors[] = "FACILITY_CONFLICT:Pool capacity is {$maxCap}. Already booked: {$booked} guest(s), remaining: {$remaining}. You requested {$numGuests}.";
+                }
+            }
+        } else {
+            $bRes = $db->query("
+                SELECT COUNT(*) AS cnt
+                FROM reservations
+                WHERE facility_id = $facility_id
+                  AND status IN ('pending','approved')
+                  AND CONCAT(checkin_date,' ',COALESCE(checkin_time,'00:00:00'))  < '$coDT'
+                  AND CONCAT(checkout_date,' ',COALESCE(checkout_time,'23:59:59')) > '$ciDT'
+            ")->fetch_assoc();
+            if ((int)($bRes['cnt'] ?? 0) > 0) {
+                $facilityConflict = true;
+                if (!$force_add) {
+                    $errors[] = 'FACILITY_CONFLICT:This ' . e($facility['facility_name']) . ' is already reserved for your selected date and time.';
+                }
+            }
+        }
+    }
+
+    // ── Addon availability check ──
     if (empty($errors) && !empty($addon_ids)) {
         $ciDT = $checkin_date  . ' ' . $checkin_time_full;
         $coDT = $checkout_date . ' ' . $checkout_time_full;
@@ -77,31 +148,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
         foreach ($addon_ids as $raw_aid) {
             $aid = (int)$raw_aid;
             $qty = max(1, (int)($addon_qtys[$aid] ?? 1));
-
-            $aRow = $db->query("
-                SELECT addon_name, limit_per_reservation FROM addons WHERE addon_id = $aid
-            ")->fetch_assoc();
-            if (!$aRow) continue;
-
-            $limit = (int)($aRow['limit_per_reservation'] ?? 0);
-            if ($limit === 0) continue; // no limit
-
-            $bRes = $db->query("
-                SELECT COALESCE(SUM(ra.quantity), 0) AS booked
+            $aRow = $db->query("SELECT addon_name, limit_per_reservation FROM addons WHERE addon_id = $aid")->fetch_assoc();
+            if (!$aRow || !(int)$aRow['limit_per_reservation']) continue;
+            $limit = (int)$aRow['limit_per_reservation'];
+            $bRes  = $db->query("
+                SELECT COALESCE(SUM(ra.quantity),0) AS booked
                 FROM reservation_addons ra
                 JOIN reservations r ON ra.reservation_id = r.reservation_id
                 WHERE ra.addon_id = $aid
                   AND r.status IN ('pending','approved')
-                  AND CONCAT(r.checkin_date,  ' ', COALESCE(r.checkin_time,  '00:00:00')) < '$coDT'
-                  AND CONCAT(r.checkout_date, ' ', COALESCE(r.checkout_time, '23:59:59')) > '$ciDT'
+                  AND CONCAT(r.checkin_date,' ',COALESCE(r.checkin_time,'00:00:00'))  < '$coDT'
+                  AND CONCAT(r.checkout_date,' ',COALESCE(r.checkout_time,'23:59:59')) > '$ciDT'
             ")->fetch_assoc();
-
             $booked    = (int)($bRes['booked'] ?? 0);
             $remaining = $limit - $booked;
-
             if ($qty > $remaining) {
-                $name     = e($aRow['addon_name']);
-                $errors[] = "Only $remaining slot(s) of \"$name\" available for your selected time. You requested $qty.";
+                $errors[] = "Only $remaining slot(s) of \"{$aRow['addon_name']}\" available. You requested $qty.";
             }
         }
     }
@@ -111,10 +173,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
         $firstRate = reset($rateData);
         $basePrice = $firstRate ? $firstRate['base_price'] : 0;
         $exceedFee = 0;
-        $maxCap    = (int)($facility['max_capacity'] ?? 0);
-        $total     = $kids_count + $adults_count;
-        if ($maxCap > 0 && $total > $maxCap) {
-            $excess    = $total - $maxCap;
+        $numGuests = $kids_count + $adults_count;
+        if ($maxCap > 0 && $numGuests > $maxCap) {
+            $excess    = $numGuests - $maxCap;
             $excRate   = $rateData['adults']['exceed_rate'] ?? ($rateData['general']['exceed_rate'] ?? 0);
             $exceedFee = $excess * $excRate;
         }
@@ -146,10 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
                 $aRow = $aStmt->get_result()->fetch_assoc();
                 if ($aRow) {
                     $asub   = $aRow['addon_price'] * $qty;
-                    $caStmt = $db->prepare("
-                        INSERT INTO cart_addons (cart_id, addon_id, quantity, subtotal)
-                        VALUES (?, ?, ?, ?)
-                    ");
+                    $caStmt = $db->prepare("INSERT INTO cart_addons (cart_id, addon_id, quantity, subtotal) VALUES (?, ?, ?, ?)");
                     $caStmt->bind_param('iiid', $cart_id, $aid, $qty, $asub);
                     $caStmt->execute();
                 }
@@ -162,15 +220,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
     }
 }
 
+// Separate facility conflict errors from regular errors for the JS modal
+$facilityConflictMsg = '';
+$regularErrors = [];
+foreach ($errors as $err) {
+    if (str_starts_with($err, 'FACILITY_CONFLICT:')) {
+        $facilityConflictMsg = substr($err, strlen('FACILITY_CONFLICT:'));
+    } else {
+        $regularErrors[] = $err;
+    }
+}
+
 function catIcon($cat) {
-    $map = [
-        'pool'=>'fa-solid fa-person-swimming','beach'=>'fa-solid fa-umbrella-beach',
-        'room'=>'fa-solid fa-bed','family room'=>'fa-solid fa-people-roof',
-        'cottage'=>'fa-solid fa-house-chimney','accommodation'=>'fa-solid fa-bed',
-        'dining'=>'fa-solid fa-utensils','spa'=>'fa-solid fa-spa',
-        'sports'=>'fa-solid fa-person-running','event'=>'fa-solid fa-calendar-days',
-        'activity'=>'fa-solid fa-bullseye','resort'=>'fa-solid fa-hotel',
-    ];
+    $map = ['pool'=>'fa-solid fa-person-swimming','beach'=>'fa-solid fa-umbrella-beach',
+            'room'=>'fa-solid fa-bed','family room'=>'fa-solid fa-people-roof',
+            'cottage'=>'fa-solid fa-house-chimney','accommodation'=>'fa-solid fa-bed',
+            'dining'=>'fa-solid fa-utensils','spa'=>'fa-solid fa-spa',
+            'sports'=>'fa-solid fa-person-running','event'=>'fa-solid fa-calendar-days',
+            'activity'=>'fa-solid fa-bullseye','resort'=>'fa-solid fa-hotel'];
     $c = strtolower(trim($cat ?? ''));
     foreach ($map as $k => $v) if (str_contains($c, $k)) return "<i class=\"$v\"></i>";
     return '<i class="fa-solid fa-star"></i>';
@@ -184,7 +251,6 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <style>
-/* ── Time Picker ── */
 .time-picker-wrap{display:flex;align-items:center;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;background:#fff;transition:var(--transition);}
 .time-picker-wrap:focus-within{border-color:var(--green);}
 .tp-col{display:flex;flex-direction:column;align-items:center;border-right:1px solid var(--gray-200);}
@@ -197,7 +263,7 @@ require_once __DIR__ . '/../includes/header.php';
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{-moz-appearance:textfield;}
 
-/* ── Addon availability states ── */
+/* Addon card states */
 .addon-card-label{display:block;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:var(--transition);}
 .addon-card-label:hover:not(.addon-unavailable){border-color:var(--green-100);background:var(--green-50);}
 .addon-card-active{border-color:var(--green)!important;background:var(--green-50);}
@@ -211,6 +277,25 @@ input[type=number]{-moz-appearance:textfield;}
 .avail-wait {background:var(--gray-100);color:var(--gray-400);}
 .addon-check-indicator{width:22px;height:22px;border:2px solid var(--gray-200);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:var(--transition);}
 .addon-card-active .addon-check-indicator{border-color:var(--green);background:var(--green);color:#fff;}
+
+/* Facility availability banner */
+.facility-avail-banner{
+  border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;
+  display:flex;align-items:flex-start;gap:12px;font-size:0.88rem;
+}
+.facility-avail-banner.ok    {background:var(--green-50); border:1.5px solid var(--green-100); color:var(--green-dark);}
+.facility-avail-banner.warn  {background:var(--yellow-light);border:1.5px solid #fde68a;color:var(--yellow-dark);}
+.facility-avail-banner.block {background:var(--red-light);border:1.5px solid #fca5a5;color:#991b1b;}
+.facility-avail-banner i{margin-top:2px;flex-shrink:0;}
+
+/* Date input with blocked styling */
+input[type=date].date-has-conflict{border-color:var(--red)!important;background:#fff5f5;}
+
+/* Conflict confirm modal */
+.conflict-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;backdrop-filter:blur(2px);}
+.conflict-modal-backdrop.show{display:flex;align-items:center;justify-content:center;}
+.conflict-modal{background:#fff;border-radius:var(--radius-lg);padding:28px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
+.conflict-modal-icon{width:56px;height:56px;background:var(--yellow-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 16px;}
 </style>
 
 <div class="container" style="padding-top:40px;padding-bottom:60px;">
@@ -220,14 +305,13 @@ input[type=number]{-moz-appearance:textfield;}
          onerror="this.src='https://placehold.co/1200x500/d1fae5/065f46?text=<?= urlencode($facility['facility_name']) ?>&font=quicksand'"/>
   </div>
 
-  <?php if (!empty($errors)): ?>
+  <?php if (!empty($regularErrors)): ?>
   <div class="flash flash-error" style="margin-bottom:24px;border-radius:var(--radius);">
-    <div><?php foreach ($errors as $err): ?><div>• <?= e($err) ?></div><?php endforeach; ?></div>
+    <div><?php foreach ($regularErrors as $err): ?><div>• <?= e($err) ?></div><?php endforeach; ?></div>
   </div>
   <?php endif; ?>
 
   <?php if (!isLoggedIn()): ?>
-  <!-- Not logged in -->
   <div class="room-detail-grid">
     <div>
       <?php if ($facility['category']): ?><span class="tag"><?= catIcon($facility['category']) ?> <?= e(ucfirst($facility['category'])) ?></span><?php endif; ?>
@@ -247,12 +331,30 @@ input[type=number]{-moz-appearance:textfield;}
   </div>
 
   <?php else: ?>
-  <!-- Logged in: full booking form -->
+
+  <!-- Hidden form that submits with force_add=1 when guest confirms conflict -->
+  <form method="POST" id="forceForm" style="display:none;">
+    <input type="hidden" name="add_to_cart"   value="1"/>
+    <input type="hidden" name="force_add"      value="1"/>
+    <input type="hidden" name="checkin_date"   id="ff_checkin_date"/>
+    <input type="hidden" name="ci_hour"        id="ff_ci_hour"/>
+    <input type="hidden" name="ci_minute"      id="ff_ci_minute"/>
+    <input type="hidden" name="ci_ampm"        id="ff_ci_ampm"/>
+    <input type="hidden" name="co_hour"        id="ff_co_hour"/>
+    <input type="hidden" name="co_minute"      id="ff_co_minute"/>
+    <input type="hidden" name="co_ampm"        id="ff_co_ampm"/>
+    <input type="hidden" name="adults_count"   id="ff_adults"/>
+    <input type="hidden" name="kids_count"     id="ff_kids"/>
+    <div id="ff_addon_ids"></div>
+    <div id="ff_addon_qtys"></div>
+  </form>
+
   <form method="POST" id="bookingForm" novalidate>
     <input type="hidden" name="add_to_cart" value="1"/>
+    <input type="hidden" name="force_add"   value="0"/>
     <div class="room-detail-grid">
 
-      <!-- ── LEFT ── -->
+      <!-- LEFT -->
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
           <?php if ($facility['category']): ?><span class="tag"><?= catIcon($facility['category']) ?> <?= e(ucfirst($facility['category'])) ?></span><?php endif; ?>
@@ -260,7 +362,6 @@ input[type=number]{-moz-appearance:textfield;}
         <h1 style="font-size:1.9rem;font-weight:700;color:var(--green-dark);margin-bottom:6px;"><?= e($facility['facility_name']) ?></h1>
         <?php if ($facility['max_capacity']): ?><p style="color:var(--gray-400);font-size:0.9rem;margin-bottom:20px;">👤 Up to <?= (int)$facility['max_capacity'] ?> guests</p><?php endif; ?>
 
-        <!-- Description -->
         <div style="margin-bottom:28px;">
           <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:10px;color:var(--gray-800);">About this facility</h2>
           <p style="color:var(--gray-500);line-height:1.7;"><?= e($facility['description']) ?></p>
@@ -291,17 +392,14 @@ input[type=number]{-moz-appearance:textfield;}
         <?php if (!empty($addons)): ?>
         <div style="margin-bottom:28px;">
           <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:4px;color:var(--gray-800);">✨ Add-on Services</h2>
-          <p id="addonHint" style="font-size:0.82rem;color:var(--gray-400);margin-bottom:12px;">
-            Pick a date and time first to see real-time availability.
-          </p>
+          <p id="addonHint" style="font-size:0.82rem;color:var(--gray-400);margin-bottom:12px;">Pick a date and time first to see real-time availability.</p>
           <div class="grid-2" style="gap:10px;">
             <?php foreach ($addons as $addon):
               $aid   = (int)$addon['addon_id'];
               $limit = (int)($addon['limit_per_reservation'] ?? 0);
             ?>
             <label class="addon-card-label" id="addonCard_<?= $aid ?>">
-              <input type="checkbox"
-                     name="addon_ids[]" value="<?= $aid ?>"
+              <input type="checkbox" name="addon_ids[]" value="<?= $aid ?>"
                      id="addonCb_<?= $aid ?>" style="display:none;"
                      onchange="toggleAddonQty(<?= $aid ?>, <?= (float)$addon['addon_price'] ?>)"/>
               <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;">
@@ -309,33 +407,22 @@ input[type=number]{-moz-appearance:textfield;}
                 <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
                     <p style="font-weight:700;font-size:0.88rem;color:var(--gray-800);"><?= e($addon['addon_name']) ?></p>
-                    <!-- Availability badge — updated by JS -->
-                    <span class="avail-badge avail-wait" id="availBadge_<?= $aid ?>">
-                      <?= $limit ? "limit: $limit" : 'unlimited' ?>
-                    </span>
+                    <span class="avail-badge avail-wait" id="availBadge_<?= $aid ?>"><?= $limit ? "limit: $limit" : 'unlimited' ?></span>
                   </div>
-                  <?php if ($addon['addon_description']): ?>
-                    <p style="font-size:0.76rem;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($addon['addon_description']) ?></p>
-                  <?php endif; ?>
+                  <?php if ($addon['addon_description']): ?><p style="font-size:0.76rem;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= e($addon['addon_description']) ?></p><?php endif; ?>
                   <p style="font-size:0.82rem;font-weight:700;color:var(--green-dark);margin-top:2px;"><?= peso($addon['addon_price']) ?></p>
                 </div>
                 <div class="addon-check-indicator" id="addonCheckIcon_<?= $aid ?>">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
               </div>
-              <!-- Qty row (shown when checked) -->
               <div class="addon-qty-wrap" id="addonQty_<?= $aid ?>" style="display:none;">
                 <span style="font-size:0.78rem;color:var(--gray-500);font-weight:600;">Qty:</span>
                 <div class="qty-stepper">
                   <button type="button" onclick="changeQty(<?= $aid ?>, -1, <?= (float)$addon['addon_price'] ?>)">−</button>
-                  <input type="number"
-                         name="addon_qtys[<?= $aid ?>]"
-                         id="qtyInput_<?= $aid ?>"
-                         value="1" min="1"
-                         max="<?= $limit ?: 9999 ?>"
-                         data-limit="<?= $limit ?>"
-                         class="qty-input"
-                         onchange="updateAddonSub(<?= $aid ?>, <?= (float)$addon['addon_price'] ?>)"/>
+                  <input type="number" name="addon_qtys[<?= $aid ?>]" id="qtyInput_<?= $aid ?>"
+                         value="1" min="1" max="<?= $limit ?: 9999 ?>" data-limit="<?= $limit ?>"
+                         class="qty-input" onchange="updateAddonSub(<?= $aid ?>, <?= (float)$addon['addon_price'] ?>)"/>
                   <button type="button" onclick="changeQty(<?= $aid ?>, 1, <?= (float)$addon['addon_price'] ?>)">+</button>
                 </div>
                 <span class="addon-sub" id="addonSub_<?= $aid ?>" data-unit="<?= (float)$addon['addon_price'] ?>"><?= peso($addon['addon_price']) ?></span>
@@ -347,7 +434,7 @@ input[type=number]{-moz-appearance:textfield;}
         <?php endif; ?>
       </div><!-- /left -->
 
-      <!-- ── RIGHT: booking form ── -->
+      <!-- RIGHT -->
       <div>
         <div class="card booking-card" style="padding:24px;position:sticky;top:80px;">
 
@@ -357,6 +444,12 @@ input[type=number]{-moz-appearance:textfield;}
               <span style="font-size:0.85rem;color:var(--gray-400);"> / booking</span>
             </div>
           <?php endif; ?>
+
+          <!-- Facility availability banner (updated by JS) -->
+          <div id="facilityAvailBanner" style="display:none;" class="facility-avail-banner ok">
+            <i class="fa-solid fa-circle-info"></i>
+            <span id="facilityAvailMsg"></span>
+          </div>
 
           <div class="form-group">
             <label class="form-label">Check-in Date</label>
@@ -436,7 +529,7 @@ input[type=number]{-moz-appearance:textfield;}
                   <button type="button" onclick="changeGuest('adults_count',-1)">−</button>
                   <input type="number" id="adults_count" name="adults_count" class="form-control"
                          value="<?= (int)($_POST['adults_count'] ?? 1) ?>" min="0"
-                         style="text-align:center;" onchange="recalcPrice()"/>
+                         style="text-align:center;" onchange="onGuestChange()"/>
                   <button type="button" onclick="changeGuest('adults_count',1)">+</button>
                 </div>
               </div>
@@ -446,14 +539,14 @@ input[type=number]{-moz-appearance:textfield;}
                   <button type="button" onclick="changeGuest('kids_count',-1)">−</button>
                   <input type="number" id="kids_count" name="kids_count" class="form-control"
                          value="<?= (int)($_POST['kids_count'] ?? 0) ?>" min="0"
-                         style="text-align:center;" onchange="recalcPrice()"/>
+                         style="text-align:center;" onchange="onGuestChange()"/>
                   <button type="button" onclick="changeGuest('kids_count',1)">+</button>
                 </div>
               </div>
             </div>
             <p class="form-error" id="guestError"></p>
             <?php if ($facility['max_capacity']): ?>
-              <p style="font-size:0.78rem;color:var(--gray-400);margin-top:6px;">Max capacity: <strong><?= (int)$facility['max_capacity'] ?></strong>. Excess guests incur additional fees.</p>
+              <p style="font-size:0.78rem;color:var(--gray-400);margin-top:6px;">Max capacity: <strong><?= (int)$facility['max_capacity'] ?></strong><?= $isPool ? ' (shared across bookings)' : '' ?>.</p>
             <?php endif; ?>
           </div>
 
@@ -478,7 +571,7 @@ input[type=number]{-moz-appearance:textfield;}
             </div>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-full" style="font-size:1rem;padding:13px;margin-bottom:10px;">🛒 Add to Cart</button>
+          <button type="submit" id="addToCartBtn" class="btn btn-primary btn-full" style="font-size:1rem;padding:13px;margin-bottom:10px;">🛒 Add to Cart</button>
           <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
             <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> No payment required at this stage</div>
             <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Free cancellation before 48 hours</div>
@@ -489,13 +582,40 @@ input[type=number]{-moz-appearance:textfield;}
 
     </div>
   </form>
+
+  <!-- Conflict warning modal -->
+  <div class="conflict-modal-backdrop" id="conflictBackdrop">
+    <div class="conflict-modal">
+      <div class="conflict-modal-icon">⚠️</div>
+      <h3 style="text-align:center;font-weight:700;font-size:1.1rem;color:var(--gray-800);margin-bottom:10px;">Facility Already Booked</h3>
+      <p id="conflictModalMsg" style="text-align:center;font-size:0.88rem;color:var(--gray-500);margin-bottom:20px;line-height:1.6;"></p>
+      <p style="text-align:center;font-size:0.82rem;color:var(--yellow-dark);background:var(--yellow-light);border-radius:var(--radius-sm);padding:10px;margin-bottom:20px;">
+        You can still add this to your cart, but you will <strong>not be able to confirm</strong> the booking unless the conflict is resolved.
+      </p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-full" onclick="closeConflictModal()">Go Back</button>
+        <button class="btn btn-yellow btn-full" onclick="forceAddToCart()">Add Anyway</button>
+      </div>
+    </div>
+  </div>
+
   <?php endif; ?>
 </div>
 
 <script>
-const pricingMap  = <?= json_encode($pricingMap) ?>;
-const maxCapacity = <?= (int)($facility['max_capacity'] ?? 0) ?>;
-const AVAIL_URL   = '<?= SITE_URL ?>/guest/pages/addon_availability.php';
+const pricingMap    = <?= json_encode($pricingMap) ?>;
+const maxCapacity   = <?= (int)($facility['max_capacity'] ?? 0) ?>;
+const facilityId    = <?= $facility_id ?>;
+const isPool        = <?= $isPool ? 'true' : 'false' ?>;
+const AVAIL_URL     = '<?= SITE_URL ?>/guest/pages/addon_availability.php';
+const FAC_AVAIL_URL = '<?= SITE_URL ?>/guest/pages/facility_availability.php';
+
+// Blocked dates from server (pre-loaded for current month)
+let blockedDates = <?= json_encode($blockedDatesInit) ?>;
+
+// Track current facility availability state
+let facilityAvailable = true;
+let facilityConflictMsg = '';
 
 // ── Time picker state ──
 const tp = {
@@ -520,13 +640,9 @@ function renderPicker(prefix) {
 function stepTime(prefix, part, delta) {
   const s = tp[prefix];
   if (part === 'hour') {
-    s.hour += delta;
-    if (s.hour > 12) s.hour = 1;
-    if (s.hour < 1)  s.hour = 12;
+    s.hour += delta; if (s.hour > 12) s.hour = 1; if (s.hour < 1) s.hour = 12;
   } else {
-    s.minute += delta * 5;
-    if (s.minute >= 60) s.minute = 0;
-    if (s.minute < 0)   s.minute = 55;
+    s.minute += delta * 5; if (s.minute >= 60) s.minute = 0; if (s.minute < 0) s.minute = 55;
   }
   renderPicker(prefix);
 }
@@ -551,29 +667,35 @@ function getRateType() {
 }
 
 function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() + n);
+  const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
+
 function fmtDate(s) {
   return new Date(s + 'T12:00:00').toLocaleDateString('en-PH', { weekday:'short', year:'numeric', month:'short', day:'numeric' });
 }
 
+function getNumGuests() {
+  return parseInt(document.getElementById('adults_count').value || 0)
+       + parseInt(document.getElementById('kids_count').value   || 0);
+}
+
 // ── Main change handler ──
+let changeTimer = null;
 function onAnyChange() {
-  const ci      = document.getElementById('checkin_date').value;
-  const ciMin   = pickerToMin('ci');
-  const rt      = getRateType();
-  const display = document.getElementById('checkout_date_display');
-  const badge   = document.getElementById('rateTypeBadge');
-  const group   = document.getElementById('rateTypeGroup');
-  const ciErr   = document.getElementById('ciTimeError');
-
-  ciErr.textContent = ciMin < 14 * 60 ? 'Check-in time must be 2:00 PM or later.' : '';
-
+  const ci    = document.getElementById('checkin_date').value;
+  const ciMin = pickerToMin('ci');
+  const rt    = getRateType();
   const coDate = rt === 'daytime' ? ci : (ci ? addDays(ci, 1) : '');
-  display.value = !ci ? 'Select check-in date first' : (coDate ? fmtDate(coDate) : '');
 
+  document.getElementById('checkout_date_display').value =
+    !ci ? 'Select check-in date first' : (coDate ? fmtDate(coDate) : '');
+
+  document.getElementById('ciTimeError').textContent =
+    ciMin < 14 * 60 ? 'Check-in time must be 2:00 PM or later.' : '';
+
+  const group = document.getElementById('rateTypeGroup');
+  const badge = document.getElementById('rateTypeBadge');
   group.style.display = 'block';
   if (rt === 'daytime') {
     badge.innerHTML = '☀️ Daytime'; badge.style.background = '#fef9c3'; badge.style.color = '#854d0e';
@@ -581,41 +703,109 @@ function onAnyChange() {
     badge.innerHTML = '🌙 Overnight'; badge.style.background = '#dbeafe'; badge.style.color = '#1e40af';
   }
 
+  // Check if selected date is in blocked list
+  if (ci && !isPool && blockedDates.includes(ci)) {
+    showFacilityBanner('block', '⛔ This facility is already reserved on your selected date.');
+    document.getElementById('checkin_date').classList.add('date-has-conflict');
+  } else {
+    document.getElementById('checkin_date').classList.remove('date-has-conflict');
+  }
+
   recalcPrice();
-  scheduleAvailCheck();
+
+  // Debounce the AJAX calls
+  clearTimeout(changeTimer);
+  changeTimer = setTimeout(() => {
+    if (ci) {
+      fetchFacilityAvail(ci, coDate);
+      fetchAddonAvail(ci, coDate);
+    }
+  }, 600);
 }
 
-// ── Availability AJAX (debounced 600ms) ──
-let availTimer = null;
-function scheduleAvailCheck() {
-  clearTimeout(availTimer);
-  availTimer = setTimeout(fetchAvailability, 600);
-}
-
-function fetchAvailability() {
+function onGuestChange() {
+  recalcPrice();
+  // Re-check pool capacity when guests change
   const ci = document.getElementById('checkin_date').value;
-  if (!ci) return;
+  if (ci && isPool) {
+    const rt     = getRateType();
+    const coDate = rt === 'daytime' ? ci : addDays(ci, 1);
+    clearTimeout(changeTimer);
+    changeTimer = setTimeout(() => fetchFacilityAvail(ci, coDate), 400);
+  }
+}
 
-  const rt      = getRateType();
-  const coDate  = rt === 'daytime' ? ci : addDays(ci, 1);
-  const ciTime  = pickerTo24str('ci');
-  const coTime  = pickerTo24str('co');
+// ── Facility availability AJAX ──
+function fetchFacilityAvail(ciDate, coDate) {
+  const fd = new FormData();
+  fd.append('facility_id',   facilityId);
+  fd.append('checkin_date',  ciDate);
+  fd.append('checkout_date', coDate);
+  fd.append('checkin_time',  pickerTo24str('ci'));
+  fd.append('checkout_time', pickerTo24str('co'));
+  fd.append('num_guests',    getNumGuests());
+  // Also fetch blocked dates for this month
+  const monthStr = ciDate.slice(0, 7); // Y-m
+  fd.append('fetch_month', monthStr);
 
-  // Show loading badges
+  fetch(FAC_AVAIL_URL, { method:'POST', body:fd })
+    .then(r => r.json())
+    .then(data => {
+      // Update blocked dates cache
+      if (data.booked_dates) blockedDates = data.booked_dates;
+
+      facilityAvailable   = data.available;
+      facilityConflictMsg = data.message || '';
+
+      if (data.available) {
+        if (isPool && data.remaining_guests !== null) {
+          const rem = data.remaining_guests;
+          const cls = rem <= 5 ? 'warn' : 'ok';
+          showFacilityBanner(cls, `✅ ${rem} guest slot(s) available for this time window.`);
+        } else {
+          showFacilityBanner('ok', '✅ Available for your selected date and time.');
+        }
+        document.getElementById('checkin_date').classList.remove('date-has-conflict');
+      } else {
+        if (data.conflict_type === 'capacity') {
+          showFacilityBanner('block', '⚠️ ' + data.message);
+        } else {
+          showFacilityBanner('block', '⛔ ' + data.message);
+        }
+        document.getElementById('checkin_date').classList.add('date-has-conflict');
+      }
+    })
+    .catch(() => {
+      hideFacilityBanner();
+    });
+}
+
+function showFacilityBanner(type, msg) {
+  const banner = document.getElementById('facilityAvailBanner');
+  const msgEl  = document.getElementById('facilityAvailMsg');
+  banner.className = 'facility-avail-banner ' + type;
+  msgEl.textContent = msg;
+  banner.style.display = 'flex';
+}
+function hideFacilityBanner() {
+  document.getElementById('facilityAvailBanner').style.display = 'none';
+}
+
+// ── Addon availability AJAX ──
+function fetchAddonAvail(ciDate, coDate) {
   document.querySelectorAll('.avail-badge').forEach(b => {
-    b.className   = 'avail-badge avail-wait';
-    b.textContent = 'checking…';
+    b.className = 'avail-badge avail-wait'; b.textContent = 'checking…';
   });
 
   const fd = new FormData();
-  fd.append('checkin_date',  ci);
+  fd.append('checkin_date',  ciDate);
   fd.append('checkout_date', coDate);
-  fd.append('checkin_time',  ciTime);
-  fd.append('checkout_time', coTime);
+  fd.append('checkin_time',  pickerTo24str('ci'));
+  fd.append('checkout_time', pickerTo24str('co'));
 
-  fetch(AVAIL_URL, { method: 'POST', body: fd })
+  fetch(AVAIL_URL, { method:'POST', body:fd })
     .then(r => r.json())
-    .then(data => applyAvailability(data))
+    .then(data => applyAddonAvail(data))
     .catch(() => {
       document.querySelectorAll('.avail-badge').forEach(b => {
         b.className = 'avail-badge avail-wait'; b.textContent = 'unavailable';
@@ -623,10 +813,8 @@ function fetchAvailability() {
     });
 }
 
-function applyAvailability(data) {
-  // data: { addon_id: remaining|null }
+function applyAddonAvail(data) {
   document.getElementById('addonHint').textContent = 'Availability shown for your selected dates.';
-
   for (const [aidStr, remaining] of Object.entries(data)) {
     const aid   = parseInt(aidStr);
     const card  = document.getElementById('addonCard_' + aid);
@@ -636,28 +824,18 @@ function applyAvailability(data) {
     if (!card || !badge) continue;
 
     if (remaining === null) {
-      // Unlimited
-      badge.className   = 'avail-badge avail-unlim';
-      badge.textContent = 'unlimited';
-      card.classList.remove('addon-unavailable');
-      if (cb) cb.disabled = false;
+      badge.className = 'avail-badge avail-unlim'; badge.textContent = 'unlimited';
+      card.classList.remove('addon-unavailable'); if (cb) cb.disabled = false;
     } else if (remaining === 0) {
-      // Fully booked — disable
-      badge.className   = 'avail-badge avail-none';
-      badge.textContent = 'fully booked';
-      card.classList.add('addon-unavailable');
-      card.classList.remove('addon-card-active');
+      badge.className = 'avail-badge avail-none'; badge.textContent = 'fully booked';
+      card.classList.add('addon-unavailable'); card.classList.remove('addon-card-active');
       if (cb) { cb.checked = false; cb.disabled = true; }
       document.getElementById('addonQty_' + aid).style.display = 'none';
       document.getElementById('addonCheckIcon_' + aid).querySelector('svg').style.display = 'none';
     } else {
-      // Some available
-      const cls  = remaining <= 3 ? 'avail-low' : 'avail-ok';
-      badge.className   = 'avail-badge ' + cls;
+      badge.className = 'avail-badge ' + (remaining <= 3 ? 'avail-low' : 'avail-ok');
       badge.textContent = remaining + ' left';
-      card.classList.remove('addon-unavailable');
-      if (cb) { cb.disabled = false; }
-      // Cap the qty stepper max to remaining
+      card.classList.remove('addon-unavailable'); if (cb) cb.disabled = false;
       if (qtyIn) {
         qtyIn.max = remaining;
         if (parseInt(qtyIn.value) > remaining) {
@@ -674,7 +852,7 @@ function applyAvailability(data) {
 function changeGuest(id, delta) {
   const el = document.getElementById(id);
   el.value = Math.max(0, parseInt(el.value || 0) + delta);
-  recalcPrice();
+  onGuestChange();
 }
 
 // ── Price recalc ──
@@ -693,12 +871,11 @@ function recalcPrice() {
     const er = rateData['adults']?.exceed_rate ?? rateData['general']?.exceed_rate ?? 0;
     exc = (total - maxCapacity) * er;
   }
-
   let addons = 0;
   document.querySelectorAll('input[name="addon_ids[]"]:checked').forEach(cb => {
     const aid  = cb.value;
     const qty  = parseInt(document.getElementById('qtyInput_' + aid)?.value || 1);
-    const unit = parseFloat(document.getElementById('addonSub_'  + aid)?.dataset.unit || 0);
+    const unit = parseFloat(document.getElementById('addonSub_' + aid)?.dataset.unit || 0);
     addons += unit * qty;
   });
 
@@ -719,13 +896,9 @@ function toggleAddonQty(aid, price) {
   const card = document.getElementById('addonCard_' + aid);
   const svg  = document.getElementById('addonCheckIcon_' + aid)?.querySelector('svg');
   if (cb.checked) {
-    wrap.style.display = 'flex';
-    card.classList.add('addon-card-active');
-    if (svg) svg.style.display = '';
+    wrap.style.display = 'flex'; card.classList.add('addon-card-active'); if (svg) svg.style.display = '';
   } else {
-    wrap.style.display = 'none';
-    card.classList.remove('addon-card-active');
-    if (svg) svg.style.display = 'none';
+    wrap.style.display = 'none'; card.classList.remove('addon-card-active'); if (svg) svg.style.display = 'none';
   }
   recalcPrice();
 }
@@ -744,13 +917,54 @@ function updateAddonSub(aid, price) {
   recalcPrice();
 }
 
-// ── Init ──
+// ── Conflict modal ──
+function closeConflictModal() {
+  document.getElementById('conflictBackdrop').classList.remove('show');
+}
+
+function forceAddToCart() {
+  closeConflictModal();
+  // Copy all current form values into the hidden force form and submit it
+  const ff = document.getElementById('forceForm');
+  const ci = document.getElementById('checkin_date').value;
+  document.getElementById('ff_checkin_date').value = ci;
+  document.getElementById('ff_ci_hour').value       = tp.ci.hour;
+  document.getElementById('ff_ci_minute').value     = tp.ci.minute;
+  document.getElementById('ff_ci_ampm').value       = tp.ci.ampm;
+  document.getElementById('ff_co_hour').value       = tp.co.hour;
+  document.getElementById('ff_co_minute').value     = tp.co.minute;
+  document.getElementById('ff_co_ampm').value       = tp.co.ampm;
+  document.getElementById('ff_adults').value        = document.getElementById('adults_count').value;
+  document.getElementById('ff_kids').value          = document.getElementById('kids_count').value;
+
+  // Copy addon selections
+  const idsContainer  = document.getElementById('ff_addon_ids');
+  const qtysContainer = document.getElementById('ff_addon_qtys');
+  idsContainer.innerHTML = ''; qtysContainer.innerHTML = '';
+  document.querySelectorAll('input[name="addon_ids[]"]:checked').forEach(cb => {
+    const inp  = document.createElement('input');
+    inp.type   = 'hidden'; inp.name = 'addon_ids[]'; inp.value = cb.value;
+    idsContainer.appendChild(inp);
+    const qty  = document.getElementById('qtyInput_' + cb.value);
+    if (qty) {
+      const qi = document.createElement('input');
+      qi.type  = 'hidden'; qi.name = 'addon_qtys[' + cb.value + ']'; qi.value = qty.value;
+      qtysContainer.appendChild(qi);
+    }
+  });
+
+  ff.submit();
+}
+
+// ── Form submit intercept ──
 document.addEventListener('DOMContentLoaded', function () {
   renderPicker('ci');
   renderPicker('co');
   onAnyChange();
 
   document.getElementById('bookingForm')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+
     let valid = true;
     const ci     = document.getElementById('checkin_date').value;
     const ciMin  = pickerToMin('ci');
@@ -776,7 +990,7 @@ document.addEventListener('DOMContentLoaded', function () {
       valid = false;
     }
 
-    // Block submit if any checked addon is now unavailable
+    // Check for unavailable checked addons
     let addonBlocked = false;
     document.querySelectorAll('input[name="addon_ids[]"]:checked').forEach(cb => {
       if (document.getElementById('addonCard_' + cb.value)?.classList.contains('addon-unavailable')) {
@@ -784,11 +998,21 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
     if (addonBlocked) {
-      alert('One or more selected add-ons are no longer available for your chosen time. Please adjust your selection.');
+      alert('One or more selected add-ons are no longer available for your chosen time. Please uncheck them.');
       valid = false;
     }
 
-    if (!valid) e.preventDefault();
+    if (!valid) return;
+
+    // If facility is not available — show conflict modal instead of submitting
+    if (!facilityAvailable) {
+      document.getElementById('conflictModalMsg').textContent = facilityConflictMsg;
+      document.getElementById('conflictBackdrop').classList.add('show');
+      return;
+    }
+
+    // All good — submit
+    this.submit();
   });
 });
 </script>

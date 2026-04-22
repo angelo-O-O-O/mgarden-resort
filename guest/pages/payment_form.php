@@ -24,8 +24,7 @@ foreach ($cartItems as &$item) {
     $cid = (int)$item['cart_id'];
     $item['addons']      = $db->query("
         SELECT ca.quantity, ca.subtotal, ca.addon_id, a.addon_name, a.addon_price
-        FROM cart_addons ca
-        JOIN addons a ON ca.addon_id = a.addon_id
+        FROM cart_addons ca JOIN addons a ON ca.addon_id = a.addon_id
         WHERE ca.cart_id = $cid
     ")->fetch_all(MYSQLI_ASSOC);
     $item['addon_total'] = array_sum(array_column($item['addons'], 'subtotal'));
@@ -44,58 +43,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
         $errors[] = 'Please select a payment method.';
     }
 
-    // ── Hard server-side addon availability check before inserting anything ──
+    // ── Hard facility conflict check ──
     if (empty($errors)) {
         foreach ($cartItems as $item) {
-            if (empty($item['addons'])) continue;
+            $fid      = (int)$item['fac_id'];
+            $cat      = strtolower(trim($item['category'] ?? ''));
+            $isPool   = str_contains($cat, 'pool');
+            $maxCap   = (int)$item['max_capacity'];
+            $ciDT     = $item['checkin_date']  . ' ' . ($item['checkin_time']  ?? '00:00:00');
+            $coDT     = $item['checkout_date'] . ' ' . ($item['checkout_time'] ?? '23:59:59');
+            $fname    = e($item['facility_name']);
 
-            $ciDT = $item['checkin_date']  . ' ' . ($item['checkin_time']  ?? '00:00:00');
-            $coDT = $item['checkout_date'] . ' ' . ($item['checkout_time'] ?? '23:59:59');
-
-            foreach ($item['addons'] as $addon) {
-                $aid   = (int)$addon['addon_id'];
-                $qty   = (int)$addon['quantity'];
-
-                $aRow  = $db->query("SELECT addon_name, limit_per_reservation FROM addons WHERE addon_id = $aid")->fetch_assoc();
-                if (!$aRow) continue;
-                $limit = (int)($aRow['limit_per_reservation'] ?? 0);
-                if ($limit === 0) continue; // no limit
-
+            if ($isPool && $maxCap > 0) {
+                $numGuests = (int)$item['adults_count'] + (int)$item['kids_count'];
                 $bRes = $db->query("
-                    SELECT COALESCE(SUM(ra.quantity),0) AS booked
-                    FROM reservation_addons ra
-                    JOIN reservations r ON ra.reservation_id = r.reservation_id
-                    WHERE ra.addon_id = $aid
-                      AND r.status IN ('pending','approved')
-                      AND CONCAT(r.checkin_date,' ',COALESCE(r.checkin_time,'00:00:00'))  < '$coDT'
-                      AND CONCAT(r.checkout_date,' ',COALESCE(r.checkout_time,'23:59:59')) > '$ciDT'
+                    SELECT COALESCE(SUM(num_guests),0) AS booked FROM reservations
+                    WHERE facility_id=$fid AND status IN('pending','approved')
+                      AND CONCAT(checkin_date,' ',COALESCE(checkin_time,'00:00:00'))  < '$coDT'
+                      AND CONCAT(checkout_date,' ',COALESCE(checkout_time,'23:59:59')) > '$ciDT'
                 ")->fetch_assoc();
-
                 $booked    = (int)($bRes['booked'] ?? 0);
-                $remaining = $limit - $booked;
-
-                if ($qty > $remaining) {
-                    $name     = e($aRow['addon_name']);
-                    $facility = e($item['facility_name']);
-                    $errors[] = "\"$name\" for $facility: only $remaining slot(s) available but you requested $qty. Please go back and adjust your cart.";
+                $remaining = $maxCap - $booked;
+                if ($booked + $numGuests > $maxCap) {
+                    $errors[] = "\"$fname\": Pool capacity exceeded. Only $remaining guest slot(s) remaining. Please go back and adjust your booking.";
+                }
+            } else {
+                $bRes = $db->query("
+                    SELECT COUNT(*) AS cnt FROM reservations
+                    WHERE facility_id=$fid AND status IN('pending','approved')
+                      AND CONCAT(checkin_date,' ',COALESCE(checkin_time,'00:00:00'))  < '$coDT'
+                      AND CONCAT(checkout_date,' ',COALESCE(checkout_time,'23:59:59')) > '$ciDT'
+                ")->fetch_assoc();
+                if ((int)($bRes['cnt'] ?? 0) > 0) {
+                    $errors[] = "\"$fname\" is already reserved for your selected dates. Please go back and choose different dates.";
                 }
             }
         }
     }
 
+    // ── Hard addon availability check ──
+    if (empty($errors)) {
+        foreach ($cartItems as $item) {
+            if (empty($item['addons'])) continue;
+            $ciDT  = $item['checkin_date']  . ' ' . ($item['checkin_time']  ?? '00:00:00');
+            $coDT  = $item['checkout_date'] . ' ' . ($item['checkout_time'] ?? '23:59:59');
+            $fname = e($item['facility_name']);
+
+            foreach ($item['addons'] as $addon) {
+                $aid   = (int)$addon['addon_id'];
+                $qty   = (int)$addon['quantity'];
+                $aRow  = $db->query("SELECT addon_name, limit_per_reservation FROM addons WHERE addon_id=$aid")->fetch_assoc();
+                if (!$aRow) continue;
+                $limit = (int)($aRow['limit_per_reservation'] ?? 0);
+                if ($limit === 0) continue;
+
+                $bRes = $db->query("
+                    SELECT COALESCE(SUM(ra.quantity),0) AS booked
+                    FROM reservation_addons ra JOIN reservations r ON ra.reservation_id=r.reservation_id
+                    WHERE ra.addon_id=$aid AND r.status IN('pending','approved')
+                      AND CONCAT(r.checkin_date,' ',COALESCE(r.checkin_time,'00:00:00'))  < '$coDT'
+                      AND CONCAT(r.checkout_date,' ',COALESCE(r.checkout_time,'23:59:59')) > '$ciDT'
+                ")->fetch_assoc();
+                $booked    = (int)($bRes['booked'] ?? 0);
+                $remaining = $limit - $booked;
+                if ($qty > $remaining) {
+                    $aname    = e($aRow['addon_name']);
+                    $errors[] = "\"$aname\" for $fname: only $remaining slot(s) available but you requested $qty. Please go back and adjust.";
+                }
+            }
+        }
+    }
+
+    // ── All checks passed: insert reservations ──
     if (empty($errors)) {
         $today = date('Y-m-d');
         $now   = date('H:i:s');
 
         foreach ($cartItems as $item) {
-            $num_guests   = (int)$item['adults_count'] + (int)$item['kids_count'];
-            $total_amount = (float)$item['grand_total'];
-            $exceed_fee   = (float)$item['exceed_fee'];
-            $facility_id  = (int)$item['fac_id'];
+            $num_guests    = (int)$item['adults_count'] + (int)$item['kids_count'];
+            $total_amount  = (float)$item['grand_total'];
+            $exceed_fee    = (float)$item['exceed_fee'];
+            $facility_id   = (int)$item['fac_id'];
             $checkin_time  = $item['checkin_time']  ?? null;
             $checkout_time = $item['checkout_time'] ?? null;
 
-            // Insert reservation (including times for overlap queries)
             $rStmt = $db->prepare("
                 INSERT INTO reservations
                   (guest_id, facility_id, num_guests, checkin_date, checkout_date,
@@ -113,16 +144,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
             $rStmt->execute();
             $reservation_id = $db->insert_id;
 
-            // ── Insert reservation_addons ──
+            // Insert reservation_addons
             if (!empty($item['addons'])) {
                 $raStmt = $db->prepare("
                     INSERT INTO reservation_addons (reservation_id, addon_id, quantity, subtotal)
                     VALUES (?, ?, ?, ?)
                 ");
                 foreach ($item['addons'] as $addon) {
-                    $aid      = (int)$addon['addon_id'];
-                    $qty      = (int)$addon['quantity'];
-                    $sub      = (float)$addon['subtotal'];
+                    $aid = (int)$addon['addon_id'];
+                    $qty = (int)$addon['quantity'];
+                    $sub = (float)$addon['subtotal'];
                     $raStmt->bind_param('iiid', $reservation_id, $aid, $qty, $sub);
                     $raStmt->execute();
                 }
@@ -142,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
         $db->query("DELETE FROM cart_addons WHERE cart_id IN (SELECT cart_id FROM carts WHERE guest_id = $guest_id)");
         $db->query("DELETE FROM carts WHERE guest_id = $guest_id");
 
-        setFlash('success', '🎉 Booking confirmed! Your reservation is now pending approval.');
+        setFlash('success', '🎉 Booking confirmed! Your reservation is pending approval.');
         redirect(SITE_URL . '/guest/pages/my_bookings.php');
     }
 }
@@ -177,7 +208,13 @@ require_once __DIR__ . '/../includes/header.php';
 
   <?php if (!empty($errors)): ?>
   <div class="flash flash-error" style="margin-bottom:20px;border-radius:var(--radius);">
-    <?php foreach ($errors as $err): ?><div>• <?= $err ?></div><?php endforeach; ?>
+    <div>
+      <p style="font-weight:700;margin-bottom:6px;">Unable to confirm booking:</p>
+      <?php foreach ($errors as $err): ?><div style="margin-bottom:4px;">• <?= $err ?></div><?php endforeach; ?>
+      <p style="margin-top:10px;font-size:0.84rem;">
+        <a href="<?= SITE_URL ?>/guest/pages/cart.php" style="color:#991b1b;font-weight:700;text-decoration:underline;">← Go back to cart</a>
+      </p>
+    </div>
   </div>
   <?php endif; ?>
 
@@ -281,7 +318,7 @@ require_once __DIR__ . '/../includes/header.php';
     </button>
 
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
-      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Your reservation will be <strong>pending</strong> until approved by the resort.</div>
+      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Reservation will be <strong>pending</strong> until approved by the resort.</div>
       <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Free cancellation before 48 hours of check-in.</div>
     </div>
   </form>
@@ -289,19 +326,17 @@ require_once __DIR__ . '/../includes/header.php';
 
 <script>
 let selectedMethod = null;
-
 function selectPayment(method) {
   selectedMethod = method;
-  document.getElementById('radioCash').checked = (method === 'cash');
-  document.getElementById('optCash').classList.toggle('selected', method === 'cash');
-  document.getElementById('radioCashDot').classList.toggle('checked', method === 'cash');
+  document.getElementById('radioCash').checked = (method==='cash');
+  document.getElementById('optCash').classList.toggle('selected', method==='cash');
+  document.getElementById('radioCashDot').classList.toggle('checked', method==='cash');
   document.getElementById('payMethodErr').style.display = 'none';
 }
-
 function validatePay() {
   if (!selectedMethod) {
     document.getElementById('payMethodErr').style.display = 'block';
-    document.getElementById('payMethodErr').scrollIntoView({ behavior:'smooth', block:'center' });
+    document.getElementById('payMethodErr').scrollIntoView({behavior:'smooth',block:'center'});
     return false;
   }
   return true;
