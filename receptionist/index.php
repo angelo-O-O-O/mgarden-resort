@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['recpst_name'] = $receptionist['recpst_fname'] . ' ' . $receptionist['recpst_lname'];
             $redirect = $_SESSION['redirect_after_login'] ?? SITE_URL . '/receptionist/pages/dashboard.php';
             unset($_SESSION['redirect_after_login']);
-            setFlash('success', 'Welcome back, ' . $receptionist['recpst_fname'] . '!');
+            $_SESSION['login_welcome'] = $receptionist['recpst_fname'];
             redirect($redirect);
         } else {
             $errors[] = 'Invalid email or password.';

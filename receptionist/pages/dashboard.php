@@ -129,7 +129,7 @@ require_once __DIR__ . '/../includes/header.php';
           <th>Check-in</th>
           <th>Check-out</th>
           <th>Rate</th>
-          <th>Guests</th>
+          <th style="text-align:center;">Total Guests</th>
           <th>Amount</th>
           <th>Actions</th>
         </tr>
@@ -153,7 +153,7 @@ require_once __DIR__ . '/../includes/header.php';
             <td><strong><?= date('M d, Y', strtotime($res['checkin_date'])) ?></strong></td>
             <td><?= date('M d, Y', strtotime($res['checkout_date'])) ?></td>
             <td><span class="status-badge badge-gray"><?= ucfirst($res['rate_type']) ?></span></td>
-            <td><?= $res['num_guests'] ?> pax</td>
+            <td style="text-align:center;"><?= $res['num_guests'] ?></td>
             <td><strong>₱<?= number_format($res['total_amount'], 2) ?></strong></td>
             <td>
               <div class="action-buttons">

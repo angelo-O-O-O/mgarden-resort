@@ -10,12 +10,20 @@ $navItems = [
     'facilities'   => ['label' => 'Facilities',   'icon' => 'fa-solid fa-door-open'],
 ];
 
-// Pending count for badge
-$_pendingCount = 0;
+// Badge counts
+$_pendingCount      = 0;
+$_upcomingCheckins  = 0;
+$_pendingPayments   = 0;
 try {
     $db = getDB();
     $r = $db->query("SELECT COUNT(*) as cnt FROM reservations WHERE status = 'pending'");
     if ($r) $_pendingCount = (int)($r->fetch_assoc()['cnt'] ?? 0);
+
+    $r = $db->query("SELECT COUNT(*) as cnt FROM reservations WHERE status = 'approved' AND checkin_date >= CURDATE()");
+    if ($r) $_upcomingCheckins = (int)($r->fetch_assoc()['cnt'] ?? 0);
+
+    $r = $db->query("SELECT COUNT(*) as cnt FROM payment_records WHERE status = 'pending'");
+    if ($r) $_pendingPayments = (int)($r->fetch_assoc()['cnt'] ?? 0);
 } catch (Exception $e) {}
 ?>
 <aside class="sidebar" id="sidebar">
@@ -68,16 +76,52 @@ try {
         <?php if ($pageKey === 'dashboard' && $_pendingCount > 0): ?>
           <span class="nav-badge"><?= $_pendingCount ?></span>
         <?php endif; ?>
+        <?php if ($pageKey === 'calendar' && $_upcomingCheckins > 0): ?>
+          <span class="nav-badge"><?= $_upcomingCheckins ?></span>
+        <?php endif; ?>
+        <?php if ($pageKey === 'payments' && $_pendingPayments > 0): ?>
+          <span class="nav-badge"><?= $_pendingPayments ?></span>
+        <?php endif; ?>
       </a>
     <?php endforeach; ?>
   </nav>
 
   <!-- Logout -->
   <div class="sidebar-footer">
-    <a href="<?= SITE_URL ?>/receptionist/pages/logout.php" class="sidebar-logout">
+    <button onclick="openSignoutModal()" class="sidebar-logout" style="width:100%;background:none;border:none;text-align:left;cursor:pointer;">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
       Sign Out
-    </a>
+    </button>
   </div>
 
 </aside>
+
+<!-- Signout confirm modal -->
+<div class="modal-backdrop" id="signoutBackdrop" onclick="closeSignoutModal()"></div>
+<div class="modal" id="signoutModal">
+  <div class="modal-header">
+    <div>
+      <h3 class="modal-title">Sign Out</h3>
+      <p class="modal-subtitle">Are you sure you want to sign out?</p>
+    </div>
+    <button class="modal-close" onclick="closeSignoutModal()"><i class="fa-solid fa-times"></i></button>
+  </div>
+  <div class="modal-body">
+    <div class="approve-confirm-box" style="background:var(--red-light);border-color:#fecaca;">
+      <div class="approve-icon" style="background:var(--red-light);color:var(--red);">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+      </div>
+      <div class="approve-info">
+        <p style="font-size:0.92rem;color:var(--gray-700);line-height:1.5;">
+          You will be logged out of the receptionist portal. Any unsaved changes will be lost.
+        </p>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="closeSignoutModal()">Stay</button>
+      <a href="<?= SITE_URL ?>/receptionist/pages/logout.php" class="btn btn-danger">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+      </a>
+    </div>
+  </div>
+</div>

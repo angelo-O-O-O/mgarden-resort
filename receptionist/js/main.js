@@ -48,12 +48,80 @@ function togglePw(inputId, toggleId) {
   }
 }
 
+// ── CONFIRM MODAL (shared) ──
+function showConfirmModal({ title, subtitle, icon, danger, confirmLabel, onConfirm }) {
+  closeConfirmModal();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = '__cfBackdrop';
+  backdrop.className = 'modal-backdrop show';
+  backdrop.onclick = closeConfirmModal;
+
+  const iconBg    = danger ? 'var(--red-light)'   : 'var(--green-light)';
+  const iconColor = danger ? 'var(--red)'          : 'var(--green)';
+  const boxBg     = danger ? 'var(--red-light)'    : 'var(--green-50)';
+  const boxBorder = danger ? '#fecaca'             : 'var(--green-100)';
+  const btnClass  = danger ? 'btn-danger'          : 'btn-primary';
+
+  const modal = document.createElement('div');
+  modal.id = '__cfModal';
+  modal.className = 'modal show';
+  modal.innerHTML = `
+    <div class="modal-header">
+      <div>
+        <h3 class="modal-title">${title}</h3>
+        ${subtitle ? `<p class="modal-subtitle">${subtitle}</p>` : ''}
+      </div>
+      <button class="modal-close" onclick="closeConfirmModal()"><i class="fa-solid fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="approve-confirm-box" style="background:${boxBg};border-color:${boxBorder};">
+        <div class="approve-icon" style="background:${iconBg};color:${iconColor};">
+          <i class="fa-solid ${icon}"></i>
+        </div>
+        <div class="approve-info">
+          <p style="font-size:0.92rem;color:var(--gray-700);line-height:1.5;">${subtitle || title}</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="closeConfirmModal()">Cancel</button>
+        <button class="btn ${btnClass}" id="__cfConfirmBtn">${confirmLabel}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(modal);
+  document.getElementById('__cfConfirmBtn').onclick = function () {
+    closeConfirmModal();
+    onConfirm();
+  };
+}
+
+function closeConfirmModal() {
+  document.getElementById('__cfModal')?.remove();
+  document.getElementById('__cfBackdrop')?.remove();
+}
+
 // ── RESERVATION ACTIONS ──
 function approveReservation(id) {
-  if (confirm('Approve this reservation?')) updateReservationStatus(id, 'approved');
+  showConfirmModal({
+    title: 'Approve Reservation',
+    subtitle: 'Are you sure you want to approve this reservation?',
+    icon: 'fa-circle-check',
+    danger: false,
+    confirmLabel: '<i class="fa-solid fa-circle-check"></i> Approve',
+    onConfirm: () => updateReservationStatus(id, 'approved'),
+  });
 }
 function cancelReservation(id) {
-  if (confirm('Cancel this reservation? This cannot be undone.')) updateReservationStatus(id, 'cancelled');
+  showConfirmModal({
+    title: 'Cancel Reservation',
+    subtitle: 'Are you sure you want to cancel this reservation? This cannot be undone.',
+    icon: 'fa-circle-xmark',
+    danger: true,
+    confirmLabel: '<i class="fa-solid fa-circle-xmark"></i> Cancel Reservation',
+    onConfirm: () => updateReservationStatus(id, 'cancelled'),
+  });
 }
 function updateReservationStatus(reservationId, status) {
   const formData = new FormData();
@@ -74,6 +142,16 @@ function updateReservationStatus(reservationId, status) {
       console.error(err);
       alert('An error occurred. Check the console for details.');
     });
+}
+
+// ── SIGNOUT MODAL ──
+function openSignoutModal() {
+  document.getElementById('signoutBackdrop')?.classList.add('show');
+  document.getElementById('signoutModal')?.classList.add('show');
+}
+function closeSignoutModal() {
+  document.getElementById('signoutBackdrop')?.classList.remove('show');
+  document.getElementById('signoutModal')?.classList.remove('show');
 }
 
 // ── LOGIN FORM VALIDATION ──
