@@ -11,6 +11,7 @@ $contact_num = '';
 $address_val = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $isModal     = !empty($_POST['from_modal']);
     $guest_name  = trim($_POST['guest_name']  ?? '');
     $email       = trim($_POST['email']       ?? '');
     $contact_num = trim($_POST['contact_num'] ?? '');
@@ -40,12 +41,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->execute()) {
                 $_SESSION['guest_id']   = $db->insert_id;
                 $_SESSION['guest_name'] = $guest_name;
+
+                if ($isModal) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'name' => explode(' ', trim($guest_name))[0]]);
+                    exit;
+                }
+
                 setFlash('success', 'Welcome to MGarden, ' . explode(' ', trim($guest_name))[0] . '!');
                 redirect(SITE_URL . '/guest/index.php');
             } else {
                 $errors[] = 'Something went wrong. Please try again.';
             }
         }
+    }
+
+    if ($isModal) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => $errors[0] ?? 'Signup failed.']);
+        exit;
     }
 }
 

@@ -81,8 +81,13 @@ $currentPage = basename($_SERVER['PHP_SELF']);
           </div>
         </div>
       <?php else: ?>
-        <a href="<?= SITE_URL ?>/guest/pages/login.php"  class="btn btn-outline">Login</a>
-        <a href="<?= SITE_URL ?>/guest/pages/signup.php" class="btn btn-primary">Sign Up</a>
+        <?php $isHome = ($currentPage === 'index.php'); ?>
+        <a href="<?= SITE_URL ?>/guest/pages/login.php"
+           class="btn btn-outline"
+           <?= $isHome ? 'data-modal-trigger="login"' : '' ?>>Login</a>
+        <a href="<?= SITE_URL ?>/guest/pages/signup.php"
+           class="btn btn-primary"
+           <?= $isHome ? 'data-modal-trigger="signup"' : '' ?>>Sign Up</a>
       <?php endif; ?>
       <button class="hamburger" onclick="toggleNav()" id="hamburger"><i class="fa-solid fa-bars"></i></button>
     </div>

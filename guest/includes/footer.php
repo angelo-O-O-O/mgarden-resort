@@ -68,5 +68,22 @@
 </footer>
 
 <script src="<?= SITE_URL ?>/guest/js/main.js?v=1"></script>
+
+<!-- ══ SIGN-OUT CONFIRMATION MODAL ══ -->
+<div class="modal-overlay" id="signoutModal" role="dialog" aria-modal="true">
+  <div class="confirm-dialogue">
+    <div class="confirm-icon-wrap">
+      <i class="fa-solid fa-right-from-bracket"></i>
+    </div>
+    <p class="confirm-title">Sign Out?</p>
+    <p class="confirm-msg">Are you sure you want to sign out of your MGarden account?</p>
+    <div class="confirm-actions">
+      <button class="btn btn-outline" onclick="closeModal('signoutModal')">Cancel</button>
+      <a href="<?= SITE_URL ?>/guest/pages/logout.php" class="btn btn-red">Sign Out</a>
+    </div>
+  </div>
+</div>
+
+<?php if (!empty($pageModals)) echo $pageModals; ?>
 </body>
 </html>

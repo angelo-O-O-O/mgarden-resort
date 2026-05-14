@@ -127,7 +127,6 @@ input, select, textarea { font-family: inherit; }
   .nav-links.open { display: flex; }
   .nav-link { padding: 10px 12px; border-radius: var(--radius-sm); }
   .nav-link.active { border-bottom: none; background: var(--green-50); }
-  .btn-outline { display: none; }
 }
 
 /* ── CARDS ── */
@@ -793,3 +792,182 @@ input[type=number] { -moz-appearance: textfield; }
 /* ── Interaction feedback ── */
 .btn:active { transform: scale(0.97); }
 .feature-item:hover .feature-icon { animation: pulseIcon 0.35s ease; }
+
+/* ══════════════════════════════════════════════════════════
+   MODAL SYSTEM — Login / Signup / Success Dialogue
+   ══════════════════════════════════════════════════════════ */
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(2, 44, 34, 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.modal-overlay.active {
+  opacity: 1; pointer-events: all;
+}
+
+/* Blur the page content behind the modal.
+   Modals are injected as direct <body> children (after <footer>),
+   so targeting body > header/main/footer never blurs them. */
+body.modal-open > header,
+body.modal-open > main,
+body.modal-open > footer {
+  filter: blur(4px);
+  transition: filter 0.3s ease;
+}
+body:not(.modal-open) > header,
+body:not(.modal-open) > main,
+body:not(.modal-open) > footer {
+  filter: blur(0);
+  transition: filter 0.3s ease;
+}
+
+/* Auth modal panel */
+.auth-modal {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  width: 100%; max-width: 460px;
+  max-height: 92vh; overflow-y: auto;
+  padding: 36px 32px 28px;
+  box-shadow: 0 28px 72px rgba(0,0,0,0.28);
+  position: relative;
+  transform: scale(0.93) translateY(18px);
+  opacity: 0;
+  transition: transform 0.38s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
+}
+.modal-overlay.active .auth-modal {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+.auth-modal .auth-header  { margin-bottom: 18px; }
+.auth-modal .auth-form-card { padding: 22px; margin-bottom: 0; }
+
+.modal-close {
+  position: absolute; top: 14px; right: 14px;
+  background: var(--gray-100); border: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; color: var(--gray-500);
+  cursor: pointer; transition: var(--transition); z-index: 2;
+}
+.modal-close:hover { background: var(--gray-200); color: var(--gray-800); }
+
+/* Modal tab switcher */
+.modal-tab-link {
+  color: var(--green); font-weight: 700; cursor: pointer;
+  background: none; border: none; font-family: inherit;
+  font-size: inherit; padding: 0; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.modal-tab-link:hover { color: var(--green-dark); }
+
+/* ── SUCCESS / CONFIRMATION DIALOGUE ── */
+.success-dialogue {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  padding: 52px 44px 44px;
+  text-align: center;
+  box-shadow: 0 28px 72px rgba(0,0,0,0.28);
+  max-width: 360px; width: 100%;
+  transform: scale(0.85) translateY(22px);
+  opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease;
+}
+.modal-overlay.active .success-dialogue {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+.success-icon-wrap {
+  width: 92px; height: 92px;
+  background: var(--green-50);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 22px;
+  border: 3px solid var(--green-100);
+}
+.success-checkmark { width: 52px; height: 52px; }
+
+.check-circle {
+  fill: none; stroke: var(--green); stroke-width: 2.5;
+  stroke-dasharray: 166; stroke-dashoffset: 166;
+  stroke-linecap: round; transform-origin: center;
+}
+.check-mark {
+  fill: none; stroke: var(--green); stroke-width: 2.5;
+  stroke-dasharray: 48; stroke-dashoffset: 48;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.modal-overlay.active .check-circle {
+  animation: checkCircle 0.65s cubic-bezier(0.65,0,0.45,1) 0.1s forwards;
+}
+.modal-overlay.active .check-mark {
+  animation: checkMark 0.35s cubic-bezier(0.65,0,0.45,1) 0.8s forwards;
+}
+@keyframes checkCircle { to { stroke-dashoffset: 0; } }
+@keyframes checkMark   { to { stroke-dashoffset: 0; } }
+
+.success-title {
+  font-size: 1.55rem; font-weight: 700;
+  color: var(--green-dark); margin-bottom: 10px;
+  animation: fadeInUp 0.45s ease 0.5s both;
+}
+.success-msg {
+  color: var(--gray-400); font-size: 0.9rem; line-height: 1.6;
+  animation: fadeInUp 0.45s ease 0.65s both;
+}
+.success-dismiss-bar {
+  margin-top: 24px;
+  height: 3px; background: var(--green-100); border-radius: 3px; overflow: hidden;
+  animation: fadeInUp 0.45s ease 0.75s both;
+}
+.success-dismiss-bar-fill {
+  height: 100%; background: var(--green); border-radius: 3px;
+  width: 100%; transform-origin: left;
+}
+
+/* ── CONFIRM DIALOGUE (sign-out etc.) ── */
+.confirm-dialogue {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  padding: 40px 36px 32px;
+  text-align: center;
+  box-shadow: 0 28px 72px rgba(0,0,0,0.28);
+  max-width: 340px; width: 100%;
+  transform: scale(0.9) translateY(16px);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
+}
+.modal-overlay.active .confirm-dialogue {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+.confirm-icon-wrap {
+  width: 72px; height: 72px;
+  background: var(--red-light);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 18px;
+  font-size: 1.6rem; color: var(--red);
+}
+.confirm-title {
+  font-size: 1.35rem; font-weight: 700;
+  color: var(--gray-800); margin-bottom: 8px;
+}
+.confirm-msg {
+  color: var(--gray-400); font-size: 0.88rem;
+  line-height: 1.6; margin-bottom: 24px;
+}
+.confirm-actions {
+  display: flex; gap: 10px; justify-content: center;
+}
+.confirm-actions .btn { flex: 1; justify-content: center; }
+@media (max-width: 480px) {
+  .auth-modal { padding: 28px 18px 22px; }
+  .success-dialogue { padding: 40px 24px 32px; }
+}

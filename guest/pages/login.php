@@ -8,6 +8,7 @@ $errors = [];
 $email  = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $isModal  = !empty($_POST['from_modal']);
     $email    = trim($_POST['email']    ?? '');
     $password = trim($_POST['password'] ?? '');
 
@@ -28,6 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($guest && password_verify($password, $guest['password'])) {
             $_SESSION['guest_id']   = $guest['guest_id'];
             $_SESSION['guest_name'] = $guest['guest_name'];
+
+            if ($isModal) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'name' => explode(' ', trim($guest['guest_name']))[0]]);
+                exit;
+            }
+
             $redirect = $_SESSION['redirect_after_login'] ?? SITE_URL . '/guest/index.php';
             unset($_SESSION['redirect_after_login']);
             setFlash('success', 'Welcome back, ' . explode(' ', trim($guest['guest_name']))[0] . '!');
@@ -35,6 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $errors[] = 'Invalid email or password.';
         }
+    }
+
+    if ($isModal) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => $errors[0] ?? 'Login failed.']);
+        exit;
     }
 }
 
