@@ -59,6 +59,17 @@ if (!$isPool) {
     }
 }
 
+// Facility reviews (graceful if table missing)
+$facilityReviews = [];
+$facilityRating  = ['avg' => 0, 'total' => 0];
+$_frv = $db->query("SELECT rv.rating, rv.review_text, rv.created_at, g.guest_name FROM reviews rv JOIN guests g ON rv.guest_id = g.guest_id WHERE rv.facility_id = $facility_id AND rv.status = 'approved' ORDER BY rv.created_at DESC LIMIT 8");
+if ($_frv) $facilityReviews = $_frv->fetch_all(MYSQLI_ASSOC);
+$_frs = $db->query("SELECT COUNT(*) AS total, COALESCE(AVG(rating),0) AS avg FROM reviews WHERE facility_id = $facility_id AND status = 'approved'");
+if ($_frs) {
+    $r = $_frs->fetch_assoc();
+    $facilityRating = ['avg' => round((float)$r['avg'], 1), 'total' => (int)$r['total']];
+}
+
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
@@ -600,6 +611,58 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
   </div>
 
   <?php endif; ?>
+
+  <!-- ── FACILITY REVIEWS ── -->
+  <?php if (!empty($facilityReviews) || $facilityRating['total'] > 0): ?>
+  <div style="margin-top:52px;padding-top:40px;border-top:2px solid var(--green-100);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:28px;">
+      <div>
+        <h2 style="font-weight:700;font-size:1.2rem;color:var(--green-dark);margin-bottom:4px;">
+          <i class="fa-solid fa-star" style="color:var(--yellow);"></i> Guest Reviews
+        </h2>
+        <?php if ($facilityRating['total'] > 0): ?>
+          <p style="color:var(--gray-400);font-size:0.84rem;">
+            <span style="color:var(--yellow);letter-spacing:2px;"><?= str_repeat('★', (int)round($facilityRating['avg'])) . str_repeat('☆', 5 - (int)round($facilityRating['avg'])) ?></span>
+            <strong style="color:var(--gray-800);margin-left:4px;"><?= number_format($facilityRating['avg'], 1) ?></strong>
+            <span> · <?= $facilityRating['total'] ?> review<?= $facilityRating['total'] !== 1 ? 's' : '' ?></span>
+          </p>
+        <?php endif; ?>
+      </div>
+      <a href="<?= SITE_URL ?>/guest/pages/reviews.php?facility=<?= $facility_id ?>" class="btn btn-sm btn-outline">
+        View All Reviews
+      </a>
+    </div>
+
+    <div class="grid-3" style="gap:16px;">
+      <?php foreach ($facilityReviews as $rv): ?>
+      <div class="card" style="padding:20px;border:1.5px solid var(--green-100);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:38px;height:38px;background:var(--green-100);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--green-dark);font-size:0.95rem;flex-shrink:0;">
+            <?= strtoupper(substr($rv['guest_name'] ?? 'G', 0, 1)) ?>
+          </div>
+          <div>
+            <?php
+              $np = explode(' ', trim($rv['guest_name'] ?? 'Guest'));
+              $dn = count($np) > 1 ? $np[0] . ' ' . strtoupper(substr(end($np), 0, 1)) . '.' : $np[0];
+            ?>
+            <p style="font-weight:700;font-size:0.86rem;color:var(--gray-800);"><?= e($dn) ?></p>
+            <p style="font-size:0.7rem;color:var(--gray-400);"><?= date('M d, Y', strtotime($rv['created_at'])) ?></p>
+          </div>
+        </div>
+        <div style="color:var(--yellow);font-size:1rem;letter-spacing:2px;margin-bottom:8px;">
+          <?= str_repeat('★', (int)$rv['rating']) . str_repeat('☆', 5 - (int)$rv['rating']) ?>
+        </div>
+        <?php if (!empty($rv['review_text'])): ?>
+          <p style="color:var(--gray-600);font-size:0.84rem;line-height:1.6;">
+            "<?= e(mb_strimwidth($rv['review_text'], 0, 160, '…')) ?>"
+          </p>
+        <?php endif; ?>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
 </div>
 
 <script>

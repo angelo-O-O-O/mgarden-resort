@@ -43,6 +43,21 @@ foreach ($pricingRows as $row) {
     $pricingByFacility[$fid]['rates'][] = $row;
 }
 
+// Recent reviews for homepage showcase
+$_rr = $db->query("
+    SELECT rv.rating, rv.review_text, rv.created_at, g.guest_name, f.facility_name
+    FROM reviews rv
+    JOIN guests g  ON rv.guest_id    = g.guest_id
+    JOIN facilities f ON rv.facility_id = f.facility_id
+    WHERE rv.status = 'approved'
+    ORDER BY rv.created_at DESC LIMIT 6
+");
+$recentReviews = $_rr ? $_rr->fetch_all(MYSQLI_ASSOC) : [];
+$_rs = $db->query("SELECT COUNT(*) AS total, COALESCE(AVG(rating),0) AS avg_rating FROM reviews WHERE status='approved'");
+$_rsRow      = $_rs ? $_rs->fetch_assoc() : ['total' => 0, 'avg_rating' => 0];
+$liveAvgRating   = round((float)$_rsRow['avg_rating'], 1);
+$liveTotalReviews = (int)$_rsRow['total'];
+
 function catIcon($category) {
     $map = [
         'pool'=>'fa-solid fa-person-swimming',
@@ -83,7 +98,7 @@ require_once __DIR__ . '/includes/header.php';
       </div>
       <div class="hero-stats">
         <div class="hero-stat"><p><?= count($facilities) ?>+</p><p>Facilities</p></div>
-        <div class="hero-stat"><p>4.9 <i class="fa-solid fa-star" style="color: var(--yellow);"></i></p><p>Rating</p></div>
+        <div class="hero-stat"><p><?= $liveAvgRating > 0 ? number_format($liveAvgRating, 1) : '4.9' ?> <i class="fa-solid fa-star" style="color: var(--yellow);"></i></p><p>Rating</p></div>
         <div class="hero-stat"><p>500+</p><p>Happy Guests</p></div>
       </div>
     </div>
@@ -95,10 +110,10 @@ require_once __DIR__ . '/includes/header.php';
 <section class="section-light" style="padding:0;">
   <div class="container">
     <div class="features-grid">
-      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-leaf"></i></div><p class="feature-title">Lush Garden Grounds</p><p class="feature-desc">Surrounded by tropical flora and tranquil landscapes.</p></div>
-      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-umbrella-beach"></i></div><p class="feature-title">Beach Access</p><p class="feature-desc">Enjoy the resort's beautiful beach and crystal waters.</p></div>
-      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-utensils"></i></div><p class="feature-title">Resort Dining</p><p class="feature-desc">Fresh, locally-sourced ingredients every meal.</p></div>
-      <div class="feature-item"><div class="feature-icon"><i class="fa-solid fa-shield-alt"></i></div><p class="feature-title">24/7 Security</p><p class="feature-desc">Round-the-clock security for your peace of mind.</p></div>
+      <div class="feature-item reveal stagger-1"><div class="feature-icon"><i class="fa-solid fa-leaf"></i></div><p class="feature-title">Lush Garden Grounds</p><p class="feature-desc">Surrounded by tropical flora and tranquil landscapes.</p></div>
+      <div class="feature-item reveal stagger-2"><div class="feature-icon"><i class="fa-solid fa-umbrella-beach"></i></div><p class="feature-title">Beach Access</p><p class="feature-desc">Enjoy the resort's beautiful beach and crystal waters.</p></div>
+      <div class="feature-item reveal stagger-3"><div class="feature-icon"><i class="fa-solid fa-utensils"></i></div><p class="feature-title">Resort Dining</p><p class="feature-desc">Fresh, locally-sourced ingredients every meal.</p></div>
+      <div class="feature-item reveal stagger-4"><div class="feature-icon"><i class="fa-solid fa-shield-alt"></i></div><p class="feature-title">24/7 Security</p><p class="feature-desc">Round-the-clock security for your peace of mind.</p></div>
     </div>
   </div>
 </section>
@@ -141,23 +156,13 @@ require_once __DIR__ . '/includes/header.php';
             <?php endif; ?>
           </div>
           <p class="room-desc"><?= e($f['description']) ?></p>
-          <div class="room-tags">
-            <?php if ($f['daytime_price']): ?>
-              <span class="tag"><i class="fa-solid fa-sun"></i> Day: <?= peso($f['daytime_price']) ?></span>
-            <?php endif; ?>
-            <?php if ($f['overnight_price']): ?>
-              <span class="tag"><i class="fa-solid fa-moon"></i> Night: <?= peso($f['overnight_price']) ?></span>
-            <?php endif; ?>
-            <?php if (!$f['daytime_price'] && !$f['overnight_price']): ?>
-              <span class="tag">Contact for pricing</span>
-            <?php endif; ?>
-          </div>
+          <?php if (!$f['daytime_price'] && !$f['overnight_price']): ?>
+          <div class="room-tags"><span class="tag">Contact for pricing</span></div>
+          <?php endif; ?>
           <div class="room-footer">
             <div>
-              <?php if ($f['daytime_price']): ?>
-                <span class="room-price"><?= peso($f['daytime_price']) ?><span> / daytime</span></span>
-              <?php elseif ($f['overnight_price']): ?>
-                <span class="room-price"><?= peso($f['overnight_price']) ?><span> / overnight</span></span>
+              <?php if ($f['daytime_price'] || $f['overnight_price']): ?>
+                <span class="room-price"><span style="font-size:0.8rem;font-weight:500;color:var(--gray-400);">Starts at</span> <?= peso($f['daytime_price'] ?: $f['overnight_price']) ?></span>
               <?php else: ?>
                 <span class="room-price" style="font-size:1rem;color:var(--gray-400);">See pricing below</span>
               <?php endif; ?>
@@ -182,85 +187,60 @@ require_once __DIR__ . '/includes/header.php';
     </div>
     <div class="grid-3">
       <?php foreach ($pricingByFacility as $fid => $fData):
-        // Group rates by rate_type
-        $grouped   = [];
+        $grouped = [];
         foreach ($fData['rates'] as $rate) {
             $grouped[$rate['rate_type']][] = $rate;
         }
-        // Check if all rates share the same base price
-        $allPrices = array_unique(array_column($fData['rates'], 'base_price'));
-        $sharedBase = count($allPrices) === 1 ? $allPrices[0] : null;
+        $lowestPrice = min(array_column($fData['rates'], 'base_price'));
       ?>
-      <div class="package-card" style="display:flex;flex-direction:column;">
-        <div class="package-icon"><?= catIcon($fData['category']) ?></div>
-        <h3 class="package-name"><?= e($fData['name']) ?></h3>
-        <?php if ($fData['category']): ?>
-          <p style="color:var(--yellow);font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:16px;">
-            <?= e(ucfirst($fData['category'])) ?>
-          </p>
-        <?php endif; ?>
+      <div class="pricing-pro-card">
 
-        <?php if ($sharedBase !== null): ?>
-          <!-- Single base price shown once prominently -->
-          <div style="background:rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:18px;text-align:center;">
-            <p style="color:rgba(255,255,255,0.5);font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">
-              Base Rate (per booking)
-            </p>
-            <p style="color:var(--yellow);font-size:1.9rem;font-weight:700;line-height:1;">
-              <?= peso($sharedBase) ?>
-            </p>
+        <!-- Header: category badge, name, starting price -->
+        <div class="pricing-pro-header">
+          <?php if ($fData['category']): ?>
+            <div style="margin-bottom:12px;">
+              <span class="pricing-cat-badge"><?= e(ucfirst($fData['category'])) ?></span>
+            </div>
+          <?php endif; ?>
+          <h3 class="pricing-pro-name"><?= e($fData['name']) ?></h3>
+          <div style="margin-top:14px;">
+            <p style="font-size:0.67rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.38);margin-bottom:4px;">Starting from</p>
+            <p style="font-size:2rem;font-weight:800;color:var(--yellow);line-height:1;letter-spacing:-0.01em;"><?= peso($lowestPrice) ?></p>
           </div>
-
-          <!-- Breakdown: rate_type → guest_type → exceed rate only -->
-          <div style="flex:1;">
-            <?php foreach ($grouped as $rateType => $rates): ?>
-              <p style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 6px;">
-                <?= $rateType === 'daytime' ? '<i class="fa-solid fa-sun"></i> Daytime' : '<i class="fa-solid fa-moon"></i> Overnight' ?>
-              </p>
-              <?php foreach ($rates as $rate): ?>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-                  <span style="font-size:0.86rem;color:rgba(255,255,255,0.85);font-weight:600;">
-                    <?= $rate['guest_type'] === 'general' ? 'All guests' : e(ucfirst($rate['guest_type'])) ?>
-                  </span>
-                  <?php if ($rate['exceed_rate']): ?>
-                    <span style="font-size:0.75rem;background:rgba(234,179,8,0.15);color:var(--yellow);padding:3px 9px;border-radius:var(--radius-full);font-weight:700;white-space:nowrap;">
-                      +<?= peso($rate['exceed_rate']) ?>/excess
-                    </span>
-                  <?php else: ?>
-                    <span style="font-size:0.78rem;color:rgba(255,255,255,0.3);">—</span>
-                  <?php endif; ?>
-                </div>
-              <?php endforeach; ?>
-            <?php endforeach; ?>
-          </div>
-
-        <?php else: ?>
-          <!-- Different base prices per rate — show full breakdown -->
-          <div style="flex:1;">
-            <?php foreach ($grouped as $rateType => $rates): ?>
-              <p style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.07em;margin:12px 0 6px;">
-                <?= $rateType === 'daytime' ? '<i class="fa-solid fa-sun"></i> Daytime' : '<i class="fa-solid fa-moon"></i> Overnight' ?>
-              </p>
-              <?php foreach ($rates as $rate): ?>
-                <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-                  <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:0.86rem;color:rgba(255,255,255,0.85);font-weight:600;">
-                      <?= $rate['guest_type'] === 'general' ? 'All guests' : e(ucfirst($rate['guest_type'])) ?>
-                    </span>
-                    <span style="color:var(--yellow);font-weight:700;font-size:0.95rem;"><?= peso($rate['base_price']) ?></span>
-                  </div>
-                  <?php if ($rate['exceed_rate']): ?>
-                    <span style="font-size:0.74rem;color:rgba(255,255,255,0.4);">+<?= peso($rate['exceed_rate']) ?>/excess guest</span>
-                  <?php endif; ?>
-                </div>
-              <?php endforeach; ?>
-            <?php endforeach; ?>
-          </div>
-        <?php endif; ?>
-
-        <div style="margin-top:20px;">
-          <span class="btn btn-yellow btn-sm btn-full nav-disabled" title="Booking coming soon">Book This Facility</span>
         </div>
+
+        <!-- Rate breakdown -->
+        <div class="pricing-pro-body">
+          <?php foreach ($grouped as $rateType => $rates): ?>
+          <div>
+            <div class="pricing-rate-type-label">
+              <?= $rateType === 'daytime' ? '<i class="fa-solid fa-sun"></i> Daytime' : '<i class="fa-solid fa-moon"></i> Overnight' ?>
+            </div>
+            <?php foreach ($rates as $rate): ?>
+            <div class="pricing-rate-row">
+              <span class="pricing-guest-label">
+                <?= $rate['guest_type'] === 'general' ? 'All guests' : e(ucfirst($rate['guest_type'])) ?>
+              </span>
+              <div class="pricing-price-col">
+                <?php if ($rate['exceed_rate']): ?>
+                  <span class="pricing-exceed-note">+<?= peso($rate['exceed_rate']) ?> / excess fee</span>
+                <?php else: ?>
+                  <span style="font-size:0.78rem;color:rgba(255,255,255,0.25);">—</span>
+                <?php endif; ?>
+              </div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php endforeach; ?>
+        </div>
+
+        <!-- CTA -->
+        <div class="pricing-pro-footer">
+          <a href="#facilities" class="btn btn-yellow btn-sm btn-full">
+            <i class="fa-solid fa-calendar-check"></i> Book This Facility
+          </a>
+        </div>
+
       </div>
       <?php endforeach; ?>
     </div>
@@ -336,7 +316,7 @@ require_once __DIR__ . '/includes/header.php';
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Happy Guests</p>
           </div>
           <div class="card" style="padding:20px;text-align:center;">
-            <p style="font-size:1.8rem;font-weight:700;color:var(--green);">4.9<i class="fa-solid fa-star" style="color: var(--yellow); margin-left: 4px;"></i></p>
+            <p style="font-size:1.8rem;font-weight:700;color:var(--green);"><?= $liveAvgRating > 0 ? number_format($liveAvgRating, 1) : '4.9' ?><i class="fa-solid fa-star" style="color: var(--yellow); margin-left: 4px;"></i></p>
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Rating</p>
           </div>
         </div>
@@ -346,12 +326,75 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
+<!-- REVIEWS -->
+<?php if (!empty($recentReviews)): ?>
+<section class="section section-light" id="reviews">
+  <div class="container">
+    <div class="text-center mb-8">
+      <h2 class="section-title">What Our Guests Say</h2>
+      <p class="section-sub">
+        <?php if ($liveAvgRating > 0): ?>
+          <span style="color:var(--yellow);font-size:1.1rem;"><?= str_repeat('★', (int)round($liveAvgRating)) ?></span>
+          <strong style="color:var(--green-dark);"> <?= number_format($liveAvgRating, 1) ?></strong>
+          <span style="color:var(--gray-400);"> · <?= $liveTotalReviews ?> review<?= $liveTotalReviews !== 1 ? 's' : '' ?></span>
+        <?php else: ?>
+          Trusted by our guests
+        <?php endif; ?>
+      </p>
+    </div>
+
+    <div class="grid-3" style="gap:18px;">
+      <?php foreach ($recentReviews as $rv): ?>
+      <div class="card" style="padding:22px;border:2px solid var(--green-100);">
+        <!-- Reviewer -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:40px;height:40px;background:var(--green-100);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--green-dark);font-size:1rem;flex-shrink:0;">
+            <?= strtoupper(substr($rv['guest_name'] ?? 'G', 0, 1)) ?>
+          </div>
+          <div>
+            <?php
+              $parts = explode(' ', trim($rv['guest_name'] ?? 'Guest'));
+              $displayName = count($parts) > 1
+                ? $parts[0] . ' ' . strtoupper(substr(end($parts), 0, 1)) . '.'
+                : $parts[0];
+            ?>
+            <p style="font-weight:700;font-size:0.88rem;color:var(--gray-800);"><?= e($displayName) ?></p>
+            <p style="font-size:0.7rem;color:var(--gray-400);"><?= date('M Y', strtotime($rv['created_at'])) ?></p>
+          </div>
+        </div>
+        <!-- Stars -->
+        <div style="color:var(--yellow);font-size:1.05rem;letter-spacing:2px;margin-bottom:10px;">
+          <?= str_repeat('★', (int)$rv['rating']) . str_repeat('☆', 5 - (int)$rv['rating']) ?>
+        </div>
+        <!-- Text -->
+        <?php if (!empty($rv['review_text'])): ?>
+          <p style="color:var(--gray-600);font-size:0.87rem;line-height:1.65;margin-bottom:10px;">
+            "<?= e(mb_strimwidth($rv['review_text'], 0, 140, '…')) ?>"
+          </p>
+        <?php endif; ?>
+        <!-- Facility tag -->
+        <p style="font-size:0.74rem;color:var(--green);font-weight:600;">
+          <i class="fa-solid fa-umbrella-beach"></i> <?= e($rv['facility_name']) ?>
+        </p>
+      </div>
+      <?php endforeach; ?>
+    </div>
+
+    <div class="text-center" style="margin-top:32px;">
+      <a href="<?= SITE_URL ?>/guest/pages/reviews.php" class="btn btn-outline">
+        <i class="fa-solid fa-star"></i> See All Reviews
+      </a>
+    </div>
+  </div>
+</section>
+<?php endif; ?>
+
 <!-- CTA -->
 <section class="cta-section">
   <div class="container">
     <h2>Ready for Your Paradise Escape?</h2>
     <p>Sign up and start booking your stay at <?= e($resortName) ?> — your tropical getaway awaits.</p>
-    <span class="btn btn-white nav-disabled" style="font-size:1.05rem;padding:14px 36px;cursor:not-allowed;opacity:0.75;" title="Coming soon">Reserve Now</span>
+    <a href="#facilities" class="btn btn-white" style="font-size:1.05rem;padding:14px 36px;">Reserve Now</a>
   </div>
 </section>
 

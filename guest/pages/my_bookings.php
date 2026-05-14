@@ -16,6 +16,15 @@ $reservations = $db->query("
     ORDER BY r.reserved_at DESC, r.reservation_id DESC
 ")->fetch_all(MYSQLI_ASSOC);
 
+// Fetch existing reviews keyed by reservation_id (graceful if table missing)
+$reviewsByRes = [];
+$_rvq = $db->query("SELECT reservation_id, review_id, rating FROM reviews WHERE guest_id = $guest_id AND status != 'rejected'");
+if ($_rvq) {
+    foreach ($_rvq->fetch_all(MYSQLI_ASSOC) as $_r) {
+        $reviewsByRes[$_r['reservation_id']] = $_r;
+    }
+}
+
 function catIcon($cat) {
     $map = [
         'pool'=>'fa-solid fa-person-swimming',
@@ -64,6 +73,9 @@ require_once __DIR__ . '/../includes/header.php';
 .booking-card-img img { width:100%; height:100%; object-fit:cover; }
 .booking-info-grid { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
 .binfo { background:var(--green-50); border-radius:var(--radius-sm); padding:8px 12px; min-width:120px; }
+@media (max-width: 600px) {
+  .booking-card-img { width:100%; height:180px; }
+}
 </style>
 
 <div class="container page-wrap">
@@ -140,11 +152,130 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
           </div>
 
+          <?php
+            $isPastStay  = $res['status'] === 'approved' && $res['checkout_date'] < date('Y-m-d');
+            $existReview = $reviewsByRes[$res['reservation_id']] ?? null;
+          ?>
+          <?php if ($isPastStay): ?>
+          <div style="padding-top:10px;border-top:1px solid var(--green-100);margin-top:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <?php if ($existReview): ?>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:0.76rem;color:var(--gray-400);font-weight:600;">Your rating:</span>
+                <span style="color:var(--yellow);font-size:1rem;letter-spacing:1px;">
+                  <?= str_repeat('★', (int)$existReview['rating']) . str_repeat('☆', 5 - (int)$existReview['rating']) ?>
+                </span>
+                <span style="font-size:0.72rem;color:var(--green);font-weight:700;">✓ Reviewed</span>
+              </div>
+            <?php else: ?>
+              <button type="button" class="btn btn-sm btn-outline" style="gap:5px;"
+                onclick="openReviewModal(<?= (int)$res['reservation_id'] ?>, '<?= e(addslashes($res['facility_name'])) ?>')">
+                <i class="fa-solid fa-star"></i> Leave a Review
+              </button>
+            <?php endif; ?>
+          </div>
+          <?php endif; ?>
+
         </div>
       </div>
     </div>
     <?php endforeach; ?>
   <?php endif; ?>
 </div>
+
+<!-- ── REVIEW MODAL ── -->
+<style>
+.review-modal-box { background:#fff; border-radius:var(--radius-lg); padding:28px 32px; max-width:480px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto; }
+.review-modal-btns { display:flex; gap:10px; }
+@media (max-width: 480px) {
+  .review-modal-box { padding:22px 18px; width:95%; }
+  .review-modal-btns { flex-direction:column; }
+}
+</style>
+<div id="reviewModalBackdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;backdrop-filter:blur(2px);align-items:center;justify-content:center;">
+  <div class="review-modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <h3 style="font-weight:700;font-size:1.15rem;color:var(--green-dark);">⭐ Rate Your Stay</h3>
+      <button onclick="closeReviewModal()" style="background:none;border:none;font-size:1.4rem;color:var(--gray-400);line-height:1;cursor:pointer;">&times;</button>
+    </div>
+    <p id="reviewFacilityName" style="color:var(--gray-400);font-size:0.86rem;margin-bottom:20px;"></p>
+
+    <form method="POST" action="<?= SITE_URL ?>/guest/pages/submit_review.php" id="reviewForm" onsubmit="return validateReview()">
+      <input type="hidden" name="reservation_id" id="reviewResId"/>
+
+      <div style="margin-bottom:20px;">
+        <p style="font-size:0.78rem;font-weight:700;color:var(--gray-700);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Your Rating</p>
+        <div id="starPicker" style="display:flex;gap:6px;margin-bottom:6px;">
+          <span class="review-star" data-value="1" style="font-size:2.4rem;color:var(--gray-200);cursor:pointer;line-height:1;transition:color 0.15s;">★</span>
+          <span class="review-star" data-value="2" style="font-size:2.4rem;color:var(--gray-200);cursor:pointer;line-height:1;transition:color 0.15s;">★</span>
+          <span class="review-star" data-value="3" style="font-size:2.4rem;color:var(--gray-200);cursor:pointer;line-height:1;transition:color 0.15s;">★</span>
+          <span class="review-star" data-value="4" style="font-size:2.4rem;color:var(--gray-200);cursor:pointer;line-height:1;transition:color 0.15s;">★</span>
+          <span class="review-star" data-value="5" style="font-size:2.4rem;color:var(--gray-200);cursor:pointer;line-height:1;transition:color 0.15s;">★</span>
+        </div>
+        <input type="hidden" name="rating" id="reviewRatingInput" value="0"/>
+        <p id="ratingLabel" style="font-size:0.82rem;color:var(--green);font-weight:700;min-height:1.2em;"></p>
+      </div>
+
+      <div class="form-group" style="margin-bottom:20px;">
+        <label class="form-label">Your Review <span style="color:var(--gray-400);font-weight:400;">(optional)</span></label>
+        <textarea name="review_text" class="form-control" rows="3" maxlength="600"
+                  placeholder="Share details about your experience..." style="resize:vertical;"></textarea>
+      </div>
+
+      <div class="review-modal-btns">
+        <button type="button" class="btn btn-outline btn-full" onclick="closeReviewModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-star"></i> Submit Review</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const ratingLabels = ['', 'Terrible', 'Poor', 'Average', 'Good', 'Excellent'];
+let currentStarRating = 0;
+
+function openReviewModal(resId, facilityName) {
+  document.getElementById('reviewResId').value = resId;
+  document.getElementById('reviewFacilityName').textContent = facilityName;
+  currentStarRating = 0;
+  document.getElementById('reviewRatingInput').value = 0;
+  updateStars(0);
+  document.getElementById('reviewModalBackdrop').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeReviewModal() {
+  document.getElementById('reviewModalBackdrop').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function updateStars(val) {
+  document.querySelectorAll('.review-star').forEach((s, i) => {
+    s.style.color = i < val ? 'var(--yellow)' : 'var(--gray-200)';
+  });
+  document.getElementById('ratingLabel').textContent = val ? ratingLabels[val] : '';
+}
+
+document.querySelectorAll('.review-star').forEach(star => {
+  star.addEventListener('click', () => {
+    currentStarRating = parseInt(star.dataset.value);
+    document.getElementById('reviewRatingInput').value = currentStarRating;
+    updateStars(currentStarRating);
+  });
+  star.addEventListener('mouseover', () => updateStars(parseInt(star.dataset.value)));
+  star.addEventListener('mouseout',  () => updateStars(currentStarRating));
+});
+
+document.getElementById('reviewModalBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) closeReviewModal();
+});
+
+function validateReview() {
+  if (parseInt(document.getElementById('reviewRatingInput').value) < 1) {
+    alert('Please select a star rating before submitting.');
+    return false;
+  }
+  return true;
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

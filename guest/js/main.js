@@ -65,9 +65,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       });
     } else {
-      // Highlight direct page links when there are no sections or the page is a dedicated page
-      if (window.location.pathname.endsWith('/schedules.php')) {
-        if (schedulesLink) schedulesLink.classList.add('active');
+      // Match current path against any nav link's PHP filename
+      const path = window.location.pathname;
+      let matched = null;
+      links.forEach(function (link) {
+        const href = link.getAttribute('href') || '';
+        const phpFile = href.replace(/#.*$/, '').split('/').pop();
+        if (phpFile && phpFile !== 'index.php' && path.endsWith('/' + phpFile)) {
+          matched = link;
+        }
+      });
+      if (matched) {
+        matched.classList.add('active');
       } else if (homeLink) {
         homeLink.classList.add('active');
       }
@@ -76,4 +85,31 @@ document.addEventListener('DOMContentLoaded', function () {
 
   window.addEventListener('scroll', setActiveLink, { passive: true });
   setActiveLink();
+
+  // ── SCROLL REVEAL ──
+  (function () {
+    var revealAll = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
+    if (!revealAll.length) return;
+
+    // Auto-stagger direct children inside grid containers
+    document.querySelectorAll('.grid-3, .grid-2, .features-grid').forEach(function (grid) {
+      var children = Array.from(grid.querySelectorAll(':scope > .reveal, :scope > .reveal-left, :scope > .reveal-right'));
+      children.forEach(function (child, i) {
+        if (!child.className.match(/stagger-\d/)) {
+          child.style.transitionDelay = (i * 0.1) + 's';
+        }
+      });
+    });
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    revealAll.forEach(function (el) { observer.observe(el); });
+  })();
 });

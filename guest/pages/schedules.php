@@ -283,6 +283,12 @@ require_once __DIR__ . '/../includes/header.php';
   border-radius: 9999px;
   white-space: nowrap;
 }
+@media (max-width: 480px) {
+  .sched-wrap   { padding: 16px 0 40px; }
+  .cal-title    { font-size: 1rem; }
+  .cal-day      { min-height: 54px; padding: 4px 3px; }
+  .cal-day-num  { font-size: 0.7rem; width: 20px; height: 20px; }
+}
 </style>
 
 <div class="container">

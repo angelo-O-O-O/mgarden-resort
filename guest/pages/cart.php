@@ -290,6 +290,14 @@ input[type=number]{-moz-appearance:textfield;}
 /* Conflict banner in cart */
 .cart-conflict-banner{display:flex;align-items:flex-start;gap:10px;background:var(--red-light);border:1.5px solid #fca5a5;border-radius:var(--radius-sm);padding:10px 14px;font-size:0.82rem;color:#991b1b;margin-bottom:10px;}
 .edit-conflict-banner{background:var(--yellow-light);border:1.5px solid #fde68a;border-radius:var(--radius-sm);padding:10px 14px;font-size:0.82rem;color:var(--yellow-dark);margin-bottom:12px;display:none;}
+.cart-item-img{width:180px;flex-shrink:0;overflow:hidden;min-height:160px;}
+.e-time-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}
+.e-guest-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.e-addon-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+@media (max-width:600px){
+  .cart-item-img{width:100%;min-height:180px;}
+  .e-time-grid,.e-guest-grid,.e-addon-grid{grid-template-columns:1fr;}
+}
 </style>
 
 <div class="container page-wrap">
@@ -332,7 +340,7 @@ input[type=number]{-moz-appearance:textfield;}
         <!-- VIEW MODE -->
         <div id="view_<?= $cid ?>">
           <div style="display:flex;flex-wrap:wrap;">
-            <div style="width:180px;flex-shrink:0;overflow:hidden;min-height:160px;">
+            <div class="cart-item-img">
               <img src="<?= $imgSrc ?>" alt="<?= e($item['facility_name']) ?>"
                    style="width:100%;height:100%;object-fit:cover;"
                    onerror="this.src='https://placehold.co/300x200/d1fae5/065f46?text=<?= urlencode($item['facility_name']) ?>&font=quicksand'"/>
@@ -418,7 +426,7 @@ input[type=number]{-moz-appearance:textfield;}
                      value="<?= e($item['checkin_date']) ?>" min="<?= date('Y-m-d') ?>"
                      onchange="eChange(<?= $cid ?>)"/>
 
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+              <div class="e-time-grid">
                 <div>
                   <p class="edit-sec" style="margin-top:0;">⏰ Check-in</p>
                   <input type="hidden" name="ci_hour"   id="eci_h_<?= $cid ?>"  value="<?= date('g',strtotime($item['checkin_time'])) ?>"/>
@@ -481,7 +489,7 @@ input[type=number]{-moz-appearance:textfield;}
               </div>
 
               <p class="edit-sec">👤 Guests</p>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div class="e-guest-grid">
                 <div>
                   <p style="font-size:0.78rem;font-weight:600;color:var(--gray-500);margin-bottom:6px;">Adults</p>
                   <div class="guest-stepper">
@@ -502,7 +510,7 @@ input[type=number]{-moz-appearance:textfield;}
 
               <?php if (!empty($allAddons)): ?>
               <p class="edit-sec">✨ Add-on Services <span id="eAvailStatus_<?= $cid ?>" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-400);font-size:0.72rem;"></span></p>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="e-addon-grid">
                 <?php foreach ($allAddons as $addon):
                   $aid     = $addon['addon_id'];
                   $checked = in_array($aid, $currentAddonIds);

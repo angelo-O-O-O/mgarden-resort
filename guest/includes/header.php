@@ -46,6 +46,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
       <a href="<?= SITE_URL ?>/guest/index.php#pricing"    class="nav-link">Pricing</a>
       <a href="<?= SITE_URL ?>/guest/pages/schedules.php"  class="nav-link" id="navSchedules">Schedules</a>
       <a href="<?= SITE_URL ?>/guest/index.php#about"      class="nav-link">About Us</a>
+      <a href="<?= SITE_URL ?>/guest/pages/reviews.php"   class="nav-link" id="navReviews">Reviews</a>
     </nav>
 
     <!-- Auth Actions -->

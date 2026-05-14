@@ -8,6 +8,17 @@ $guest = currentGuest();
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<style>
+.profile-card       { padding: 36px; }
+.profile-avatar-row { display:flex; align-items:center; gap:24px; margin-bottom:36px; padding-bottom:28px; border-bottom:1px solid var(--green-100); }
+.profile-info-grid  { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+@media (max-width: 600px) {
+  .profile-card       { padding: 20px 16px; }
+  .profile-avatar-row { flex-wrap:wrap; gap:16px; }
+  .profile-info-grid  { grid-template-columns:1fr; }
+}
+</style>
+
 <div class="page-wrap">
   <div class="container" style="max-width:720px;">
 
@@ -18,10 +29,10 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 
     <!-- Profile Card -->
-    <div class="card" style="padding:36px;box-shadow:var(--shadow-hover);">
+    <div class="card profile-card" style="box-shadow:var(--shadow-hover);">
 
       <!-- Avatar + Name -->
-      <div style="display:flex;align-items:center;gap:24px;margin-bottom:36px;padding-bottom:28px;border-bottom:1px solid var(--green-100);">
+      <div class="profile-avatar-row">
         <?php if (!empty($guest['profile_pic'])): ?>
           <img
             src="<?= SITE_URL ?>/guest/pages/profile_pic.php?id=<?= $guest['guest_id'] ?>"
@@ -42,7 +53,7 @@ require_once __DIR__ . '/../includes/header.php';
       </div>
 
       <!-- Info Grid -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+      <div class="profile-info-grid">
 
         <div class="profile-info-item">
           <p class="profile-info-label"><i class="fa-solid fa-envelope"></i> Email Address</p>
