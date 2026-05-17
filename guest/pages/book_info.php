@@ -258,21 +258,25 @@ $imgSrc = !empty($facility['photo'])
     ? SITE_URL . '/guest/pages/facility_photo.php?id=' . $facility_id
     : 'https://placehold.co/1200x500/d1fae5/065f46?text=' . urlencode($facility['facility_name']) . '&font=quicksand';
 
+// Default time input values (restored from POST on validation errors)
+$ci_time_val = '14:00';
+if (!empty($_POST['ci_hour'])) {
+    $ch = (int)$_POST['ci_hour']; $cm = (int)($_POST['ci_minute']??0); $ca = $_POST['ci_ampm']??'PM';
+    $ci_time_val = sprintf('%02d:%02d', $ca==='PM'?($ch<12?$ch+12:$ch):($ch===12?0:$ch), $cm);
+}
+$co_time_val = '12:00';
+if (!empty($_POST['co_hour'])) {
+    $ch = (int)$_POST['co_hour']; $cm = (int)($_POST['co_minute']??0); $ca = $_POST['co_ampm']??'PM';
+    $co_time_val = sprintf('%02d:%02d', $ca==='PM'?($ch<12?$ch+12:$ch):($ch===12?0:$ch), $cm);
+}
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <style>
-.time-picker-wrap{display:flex;align-items:center;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;background:#fff;transition:var(--transition);}
-.time-picker-wrap:focus-within{border-color:var(--green);}
-.tp-col{display:flex;flex-direction:column;align-items:center;border-right:1px solid var(--gray-200);}
-.tp-col:last-child{border-right:none;}
-.tp-btn{width:100%;background:var(--green-50);border:none;color:var(--green-dark);font-size:0.9rem;font-weight:700;cursor:pointer;padding:4px 14px;line-height:1;transition:var(--transition);}
-.tp-btn:hover{background:var(--green-100);}
-.tp-val{padding:6px 14px;font-size:1rem;font-weight:700;color:var(--gray-800);min-width:48px;text-align:center;border-top:1px solid var(--gray-200);border-bottom:1px solid var(--gray-200);background:#fff;user-select:none;}
-.tp-ampm-btn{padding:10px 14px;font-size:0.9rem;font-weight:700;background:none;border:none;cursor:pointer;color:var(--gray-400);transition:var(--transition);}
-.tp-ampm-btn.active{color:var(--green-dark);background:var(--green-50);}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{-moz-appearance:textfield;}
+input[type=time].form-control{cursor:pointer;letter-spacing:0.03em;}
 
 /* Addon card states */
 .addon-card-label{display:block;border:2px solid var(--gray-200);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:var(--transition);}
@@ -306,7 +310,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
 .conflict-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;backdrop-filter:blur(2px);}
 .conflict-modal-backdrop.show{display:flex;align-items:center;justify-content:center;}
 .conflict-modal{background:#fff;border-radius:var(--radius-lg);padding:28px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);}
-.conflict-modal-icon{width:56px;height:56px;background:var(--yellow-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin:0 auto 16px;}
+.conflict-modal-icon{width:56px;height:56px;background:var(--yellow-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--yellow-dark);margin:0 auto 16px;}
 </style>
 
 <div class="container" style="padding-top:40px;padding-bottom:60px;">
@@ -327,7 +331,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
     <div>
       <?php if ($facility['category']): ?><span class="tag"><?= catIcon($facility['category']) ?> <?= e(ucfirst($facility['category'])) ?></span><?php endif; ?>
       <h1 style="font-size:1.9rem;font-weight:700;color:var(--green-dark);margin:10px 0 6px;"><?= e($facility['facility_name']) ?></h1>
-      <?php if ($facility['max_capacity']): ?><p style="color:var(--gray-400);font-size:0.9rem;margin-bottom:20px;">👤 Up to <?= (int)$facility['max_capacity'] ?> guests</p><?php endif; ?>
+      <?php if ($facility['max_capacity']): ?><p style="color:var(--gray-400);font-size:0.9rem;margin-bottom:20px;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-users" style="color:var(--green);"></i> Up to <?= (int)$facility['max_capacity'] ?> guests</p><?php endif; ?>
       <p style="color:var(--gray-500);line-height:1.7;"><?= e($facility['description']) ?></p>
     </div>
     <div>
@@ -371,7 +375,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
           <?php if ($facility['category']): ?><span class="tag"><?= catIcon($facility['category']) ?> <?= e(ucfirst($facility['category'])) ?></span><?php endif; ?>
         </div>
         <h1 style="font-size:1.9rem;font-weight:700;color:var(--green-dark);margin-bottom:6px;"><?= e($facility['facility_name']) ?></h1>
-        <?php if ($facility['max_capacity']): ?><p style="color:var(--gray-400);font-size:0.9rem;margin-bottom:20px;">👤 Up to <?= (int)$facility['max_capacity'] ?> guests</p><?php endif; ?>
+        <?php if ($facility['max_capacity']): ?><p style="color:var(--gray-400);font-size:0.9rem;margin-bottom:20px;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-users" style="color:var(--green);"></i> Up to <?= (int)$facility['max_capacity'] ?> guests</p><?php endif; ?>
 
         <div style="margin-bottom:28px;">
           <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:10px;color:var(--gray-800);">About this facility</h2>
@@ -380,7 +384,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
 
         <!-- Rates -->
         <div style="margin-bottom:28px;">
-          <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:14px;color:var(--gray-800);">💰 Rates</h2>
+          <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:14px;color:var(--gray-800);"><i class="fa-solid fa-tag" style="color:var(--green);margin-right:6px;"></i>Rates</h2>
           <?php $grouped = []; foreach ($pricingRows as $p) $grouped[$p['rate_type']][] = $p; ?>
           <?php if ($sharedBase !== null): ?>
             <div style="background:var(--green-50);border-radius:var(--radius);padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
@@ -391,7 +395,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
           <div class="amenity-grid">
             <?php foreach ($grouped as $rateType => $rates): foreach ($rates as $rate): ?>
               <div class="amenity-item" style="flex-direction:column;align-items:flex-start;gap:2px;">
-                <span style="font-weight:700;font-size:0.84rem;"><?= $rateType==='daytime'?'☀️':'🌙' ?> <?= e(ucfirst($rateType)) ?><?php if ($rate['guest_type']!=='general'): ?> — <?= e(ucfirst($rate['guest_type'])) ?><?php endif; ?></span>
+                <span style="font-weight:700;font-size:0.84rem;"><?= $rateType==='daytime'?'<i class="fa-solid fa-sun" style="color:var(--yellow);"></i>':'<i class="fa-solid fa-moon" style="color:#6366f1;"></i>' ?> <?= e(ucfirst($rateType)) ?><?php if ($rate['guest_type']!=='general'): ?> — <?= e(ucfirst($rate['guest_type'])) ?><?php endif; ?></span>
                 <?php if ($sharedBase===null): ?><span style="color:var(--green-dark);font-weight:700;"><?= peso($rate['base_price']) ?></span><?php endif; ?>
                 <?php if ($rate['exceed_rate']): ?><span style="font-size:0.74rem;color:var(--gray-400);">+<?= peso($rate['exceed_rate']) ?>/excess</span><?php endif; ?>
               </div>
@@ -402,7 +406,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
         <!-- Add-ons -->
         <?php if (!empty($addons)): ?>
         <div style="margin-bottom:28px;">
-          <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:4px;color:var(--gray-800);">✨ Add-on Services</h2>
+          <h2 style="font-weight:700;font-size:1.1rem;margin-bottom:4px;color:var(--gray-800);"><i class="fa-solid fa-circle-plus" style="color:var(--green);margin-right:6px;"></i>Add-on Services</h2>
           <p id="addonHint" style="font-size:0.82rem;color:var(--gray-400);margin-bottom:12px;">Pick a date and time first to see real-time availability.</p>
           <div class="grid-2" style="gap:10px;">
             <?php foreach ($addons as $addon):
@@ -414,7 +418,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
                      id="addonCb_<?= $aid ?>" style="display:none;"
                      onchange="toggleAddonQty(<?= $aid ?>, <?= (float)$addon['addon_price'] ?>)"/>
               <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;">
-                <div style="width:40px;height:40px;background:var(--green-50);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">✨</div>
+                <div style="width:40px;height:40px;background:var(--green-50);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;color:var(--green);"><i class="fa-solid fa-star"></i></div>
                 <div style="flex:1;min-width:0;">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
                     <p style="font-weight:700;font-size:0.88rem;color:var(--gray-800);"><?= e($addon['addon_name']) ?></p>
@@ -458,8 +462,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
 
           <!-- Facility availability banner (updated by JS) -->
           <div id="facilityAvailBanner" style="display:none;" class="facility-avail-banner ok">
-            <i class="fa-solid fa-circle-info"></i>
-            <span id="facilityAvailMsg"></span>
+            <span id="facilityAvailMsg" style="display:flex;align-items:center;gap:8px;"></span>
           </div>
 
           <div class="form-group">
@@ -471,27 +474,18 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
           </div>
 
           <div class="form-group">
+            <label class="form-label" style="color:var(--gray-400);">Check-out Date <span style="font-size:0.72rem;font-weight:400;">(auto-computed)</span></label>
+            <input type="text" id="checkout_date_display" class="form-control" placeholder="Select check-in date first" readonly
+                   style="background:var(--green-50);cursor:not-allowed;color:var(--gray-600);"/>
+          </div>
+
+          <div class="form-group">
             <label class="form-label">Check-in Time <span style="color:var(--gray-400);font-size:0.75rem;font-weight:400;">(min. 2:00 PM)</span></label>
             <input type="hidden" name="ci_hour"   id="ci_hour"   value="2"/>
             <input type="hidden" name="ci_minute" id="ci_minute" value="0"/>
             <input type="hidden" name="ci_ampm"   id="ci_ampm"   value="PM"/>
-            <div class="time-picker-wrap">
-              <div class="tp-col">
-                <button type="button" class="tp-btn" onclick="stepTime('ci','hour',1)">▲</button>
-                <div class="tp-val" id="ciHourDisplay">02</div>
-                <button type="button" class="tp-btn" onclick="stepTime('ci','hour',-1)">▼</button>
-              </div>
-              <div style="display:flex;align-items:center;padding:0 4px;font-weight:700;color:var(--gray-400);">:</div>
-              <div class="tp-col">
-                <button type="button" class="tp-btn" onclick="stepTime('ci','minute',1)">▲</button>
-                <div class="tp-val" id="ciMinuteDisplay">00</div>
-                <button type="button" class="tp-btn" onclick="stepTime('ci','minute',-1)">▼</button>
-              </div>
-              <div class="tp-col" style="border-left:1px solid var(--gray-200);">
-                <button type="button" class="tp-ampm-btn" id="ciAM" onclick="setAmPm('ci','AM')">AM</button>
-                <button type="button" class="tp-ampm-btn active" id="ciPM" onclick="setAmPm('ci','PM')">PM</button>
-              </div>
-            </div>
+            <input type="time" id="ci_time_input" class="form-control"
+                   value="<?= $ci_time_val ?>" onchange="syncTimeInput('ci')"/>
             <p class="form-error" id="ciTimeError"></p>
           </div>
 
@@ -500,30 +494,12 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
             <input type="hidden" name="co_hour"   id="co_hour"   value="12"/>
             <input type="hidden" name="co_minute" id="co_minute" value="0"/>
             <input type="hidden" name="co_ampm"   id="co_ampm"   value="PM"/>
-            <div class="time-picker-wrap">
-              <div class="tp-col">
-                <button type="button" class="tp-btn" onclick="stepTime('co','hour',1)">▲</button>
-                <div class="tp-val" id="coHourDisplay">12</div>
-                <button type="button" class="tp-btn" onclick="stepTime('co','hour',-1)">▼</button>
-              </div>
-              <div style="display:flex;align-items:center;padding:0 4px;font-weight:700;color:var(--gray-400);">:</div>
-              <div class="tp-col">
-                <button type="button" class="tp-btn" onclick="stepTime('co','minute',1)">▲</button>
-                <div class="tp-val" id="coMinuteDisplay">00</div>
-                <button type="button" class="tp-btn" onclick="stepTime('co','minute',-1)">▼</button>
-              </div>
-              <div class="tp-col" style="border-left:1px solid var(--gray-200);">
-                <button type="button" class="tp-ampm-btn" id="coAM" onclick="setAmPm('co','AM')">AM</button>
-                <button type="button" class="tp-ampm-btn active" id="coPM" onclick="setAmPm('co','PM')">PM</button>
-              </div>
-            </div>
-            <p style="font-size:0.78rem;color:var(--gray-400);margin-top:4px;">Same-day ≤ 6PM = ☀️ Daytime &nbsp;|&nbsp; Past 6PM or next-day AM = 🌙 Overnight</p>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Check-out Date</label>
-            <input type="text" id="checkout_date_display" class="form-control" placeholder="Auto-computed" readonly
-                   style="background:var(--green-50);cursor:not-allowed;color:var(--gray-600);"/>
+            <input type="time" id="co_time_input" class="form-control"
+                   value="<?= $co_time_val ?>" onchange="syncTimeInput('co')"/>
+            <p style="font-size:0.78rem;color:var(--gray-400);margin-top:6px;">
+              <i class="fa-solid fa-sun" style="color:var(--yellow);"></i> Same-day by 6:00 PM = Daytime &nbsp;·&nbsp;
+              <i class="fa-solid fa-moon" style="color:#6366f1;"></i> After 6:00 PM or next-day AM = Overnight
+            </p>
           </div>
 
           <div class="form-group" id="rateTypeGroup" style="display:none;">
@@ -582,11 +558,11 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
             </div>
           </div>
 
-          <button type="submit" id="addToCartBtn" class="btn btn-primary btn-full" style="font-size:1rem;padding:13px;margin-bottom:10px;">🛒 Add to Cart</button>
+          <button type="submit" id="addToCartBtn" class="btn btn-primary btn-full" style="font-size:1rem;padding:13px;margin-bottom:10px;"><i class="fa-solid fa-cart-plus"></i> Add to Cart</button>
           <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> No payment required at this stage</div>
-            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Free cancellation before 48 hours</div>
-            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Pay upon check-in</div>
+            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-check" style="color:var(--green);margin-top:1px;"></i> No payment required at this stage</div>
+            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-check" style="color:var(--green);margin-top:1px;"></i> Free cancellation before 48 hours</div>
+            <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-check" style="color:var(--green);margin-top:1px;"></i> Pay upon check-in</div>
           </div>
         </div>
       </div><!-- /right -->
@@ -597,7 +573,7 @@ input[type=date].date-has-conflict{border-color:var(--red)!important;background:
   <!-- Conflict warning modal -->
   <div class="conflict-modal-backdrop" id="conflictBackdrop">
     <div class="conflict-modal">
-      <div class="conflict-modal-icon">⚠️</div>
+      <div class="conflict-modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
       <h3 style="text-align:center;font-weight:700;font-size:1.1rem;color:var(--gray-800);margin-bottom:10px;">Facility Already Booked</h3>
       <p id="conflictModalMsg" style="text-align:center;font-size:0.88rem;color:var(--gray-500);margin-bottom:20px;line-height:1.6;"></p>
       <p style="text-align:center;font-size:0.82rem;color:var(--yellow-dark);background:var(--yellow-light);border-radius:var(--radius-sm);padding:10px;margin-bottom:20px;">
@@ -680,7 +656,7 @@ let blockedDates = <?= json_encode($blockedDatesInit) ?>;
 let facilityAvailable = true;
 let facilityConflictMsg = '';
 
-// ── Time picker state ──
+// ── Time state (used by pickerToMin / pickerTo24str / forceAddToCart) ──
 const tp = {
   ci: { hour: 2,  minute: 0, ampm: 'PM' },
   co: { hour: 12, minute: 0, ampm: 'PM' },
@@ -688,29 +664,20 @@ const tp = {
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function renderPicker(prefix) {
-  const s = tp[prefix];
-  document.getElementById(prefix + 'HourDisplay').textContent   = pad(s.hour);
-  document.getElementById(prefix + 'MinuteDisplay').textContent = pad(s.minute);
-  document.getElementById(prefix + '_hour').value   = s.hour;
-  document.getElementById(prefix + '_minute').value = s.minute;
-  document.getElementById(prefix + '_ampm').value   = s.ampm;
-  document.getElementById(prefix + 'AM').classList.toggle('active', s.ampm === 'AM');
-  document.getElementById(prefix + 'PM').classList.toggle('active', s.ampm === 'PM');
+function syncTimeInput(prefix) {
+  const input = document.getElementById(prefix + '_time_input');
+  if (!input || !input.value) return;
+  const [h24str, minStr] = input.value.split(':');
+  const h24 = parseInt(h24str, 10);
+  const min = parseInt(minStr, 10);
+  let h12 = h24 % 12; if (h12 === 0) h12 = 12;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  tp[prefix] = { hour: h12, minute: min, ampm };
+  document.getElementById(prefix + '_hour').value   = h12;
+  document.getElementById(prefix + '_minute').value = min;
+  document.getElementById(prefix + '_ampm').value   = ampm;
   onAnyChange();
 }
-
-function stepTime(prefix, part, delta) {
-  const s = tp[prefix];
-  if (part === 'hour') {
-    s.hour += delta; if (s.hour > 12) s.hour = 1; if (s.hour < 1) s.hour = 12;
-  } else {
-    s.minute += delta * 5; if (s.minute >= 60) s.minute = 0; if (s.minute < 0) s.minute = 55;
-  }
-  renderPicker(prefix);
-}
-
-function setAmPm(prefix, val) { tp[prefix].ampm = val; renderPicker(prefix); }
 
 function pickerToMin(prefix) {
   const s = tp[prefix];
@@ -751,6 +718,12 @@ function onAnyChange() {
   const rt    = getRateType();
   const coDate = rt === 'daytime' ? ci : (ci ? addDays(ci, 1) : '');
 
+  // Clear date error as soon as a date is selected
+  if (ci) {
+    document.getElementById('checkinError').textContent = '';
+    document.getElementById('checkin_date').classList.remove('input-error');
+  }
+
   document.getElementById('checkout_date_display').value =
     !ci ? 'Select check-in date first' : (coDate ? fmtDate(coDate) : '');
 
@@ -761,14 +734,14 @@ function onAnyChange() {
   const badge = document.getElementById('rateTypeBadge');
   group.style.display = 'block';
   if (rt === 'daytime') {
-    badge.innerHTML = '☀️ Daytime'; badge.style.background = '#fef9c3'; badge.style.color = '#854d0e';
+    badge.innerHTML = '<i class="fa-solid fa-sun"></i> Daytime'; badge.style.background = '#fef9c3'; badge.style.color = '#854d0e';
   } else {
-    badge.innerHTML = '🌙 Overnight'; badge.style.background = '#dbeafe'; badge.style.color = '#1e40af';
+    badge.innerHTML = '<i class="fa-solid fa-moon"></i> Overnight'; badge.style.background = '#ede9fe'; badge.style.color = '#4c1d95';
   }
 
   // Check if selected date is in blocked list
   if (ci && !isPool && blockedDates.includes(ci)) {
-    showFacilityBanner('block', '⛔ This facility is already reserved on your selected date.');
+    showFacilityBanner('block', 'This facility is already reserved on your selected date.');
     document.getElementById('checkin_date').classList.add('date-has-conflict');
   } else {
     document.getElementById('checkin_date').classList.remove('date-has-conflict');
@@ -824,17 +797,13 @@ function fetchFacilityAvail(ciDate, coDate) {
         if (isPool && data.remaining_guests !== null) {
           const rem = data.remaining_guests;
           const cls = rem <= 5 ? 'warn' : 'ok';
-          showFacilityBanner(cls, `✅ ${rem} guest slot(s) available for this time window.`);
+          showFacilityBanner(cls, `${rem} guest slot(s) available for this time window.`);
         } else {
-          showFacilityBanner('ok', '✅ Available for your selected date and time.');
+          showFacilityBanner('ok', 'Available for your selected date and time.');
         }
         document.getElementById('checkin_date').classList.remove('date-has-conflict');
       } else {
-        if (data.conflict_type === 'capacity') {
-          showFacilityBanner('block', '⚠️ ' + data.message);
-        } else {
-          showFacilityBanner('block', '⛔ ' + data.message);
-        }
+        showFacilityBanner('block', data.message);
         document.getElementById('checkin_date').classList.add('date-has-conflict');
       }
     })
@@ -846,8 +815,9 @@ function fetchFacilityAvail(ciDate, coDate) {
 function showFacilityBanner(type, msg) {
   const banner = document.getElementById('facilityAvailBanner');
   const msgEl  = document.getElementById('facilityAvailMsg');
+  const icons  = { ok: 'fa-circle-check', warn: 'fa-triangle-exclamation', block: 'fa-circle-xmark' };
   banner.className = 'facility-avail-banner ' + type;
-  msgEl.textContent = msg;
+  msgEl.innerHTML = `<i class="fa-solid ${icons[type] || 'fa-circle-info'}"></i> ${msg}`;
   banner.style.display = 'flex';
 }
 function hideFacilityBanner() {
@@ -1021,8 +991,8 @@ function forceAddToCart() {
 
 // ── Form submit intercept ──
 document.addEventListener('DOMContentLoaded', function () {
-  renderPicker('ci');
-  renderPicker('co');
+  syncTimeInput('ci');
+  syncTimeInput('co');
   onAnyChange();
 
   document.getElementById('bookingForm')?.addEventListener('submit', function (e) {

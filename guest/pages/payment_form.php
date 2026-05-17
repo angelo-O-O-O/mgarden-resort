@@ -6,12 +6,19 @@ requireLogin();
 $db       = getDB();
 $guest_id = (int)$_SESSION['guest_id'];
 
+// ── Filter by selected cart IDs if provided ──
+$selectedIds = [];
+if (!empty($_GET['ids'])) {
+    $selectedIds = array_values(array_filter(array_map('intval', explode(',', $_GET['ids']))));
+}
+$idFilter = !empty($selectedIds) ? 'AND c.cart_id IN (' . implode(',', $selectedIds) . ')' : '';
+
 // ── Fetch cart items ──
 $cartItems = $db->query("
     SELECT c.*, f.facility_name, f.category, f.max_capacity, f.facility_id AS fac_id
     FROM carts c
     JOIN facilities f ON c.facility_id = f.facility_id
-    WHERE c.guest_id = $guest_id
+    WHERE c.guest_id = $guest_id $idFilter
     ORDER BY c.added_at ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
@@ -169,9 +176,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_payment'])) {
             $pStmt->execute();
         }
 
-        // Clear cart
-        $db->query("DELETE FROM cart_addons WHERE cart_id IN (SELECT cart_id FROM carts WHERE guest_id = $guest_id)");
-        $db->query("DELETE FROM carts WHERE guest_id = $guest_id");
+        // Clear only confirmed items
+        if (!empty($selectedIds)) {
+            $idList = implode(',', $selectedIds);
+            $db->query("DELETE FROM cart_addons WHERE cart_id IN ($idList)");
+            $db->query("DELETE FROM carts WHERE guest_id = $guest_id AND cart_id IN ($idList)");
+        } else {
+            $db->query("DELETE FROM cart_addons WHERE cart_id IN (SELECT cart_id FROM carts WHERE guest_id = $guest_id)");
+            $db->query("DELETE FROM carts WHERE guest_id = $guest_id");
+        }
 
         setFlash('success', '🎉 Booking confirmed! Your reservation is pending approval.');
         redirect(SITE_URL . '/guest/pages/my_bookings.php');
@@ -221,7 +234,7 @@ require_once __DIR__ . '/../includes/header.php';
   <form method="POST" id="payForm">
     <input type="hidden" name="confirm_payment" value="1"/>
 
-    <h2 style="font-size:1rem;font-weight:700;color:var(--gray-800);margin-bottom:12px;">📋 Booking Summary</h2>
+    <h2 style="font-size:1rem;font-weight:700;color:var(--gray-800);margin-bottom:12px;"><i class="fa-solid fa-list-check" style="color:var(--green);margin-right:6px;"></i>Booking Summary</h2>
 
     <?php foreach ($cartItems as $item): ?>
     <div class="payment-card">
@@ -229,7 +242,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div>
           <p style="font-weight:700;font-size:0.95rem;color:var(--gray-800);"><?= e($item['facility_name']) ?></p>
           <span style="font-size:0.75rem;padding:3px 10px;border-radius:var(--radius-full);font-weight:700;background:<?= $item['rate_type']==='daytime'?'#fef9c3':'#dbeafe' ?>;color:<?= $item['rate_type']==='daytime'?'#854d0e':'#1e40af' ?>;">
-            <?= $item['rate_type']==='daytime'?'☀️ Daytime':'🌙 Overnight' ?>
+            <?= $item['rate_type']==='daytime'?'<i class="fa-solid fa-sun"></i> Daytime':'<i class="fa-solid fa-moon"></i> Overnight' ?>
           </span>
         </div>
         <span style="font-size:1.1rem;font-weight:700;color:var(--green-dark);"><?= peso($item['grand_total']) ?></span>
@@ -248,9 +261,9 @@ require_once __DIR__ . '/../includes/header.php';
             <?php if (!empty($item['checkout_time'])): ?><p style="font-size:0.78rem;color:var(--green-dark);"><?= date('g:i A', strtotime($item['checkout_time'])) ?></p><?php endif; ?>
           </div>
         </div>
-        <p style="font-size:0.84rem;color:var(--gray-500);margin-bottom:10px;">
-          👤 <?= (int)$item['adults_count'] ?> Adult<?= $item['adults_count']!=1?'s':'' ?>
-          <?php if ($item['kids_count']>0): ?>&nbsp;·&nbsp; 🧒 <?= (int)$item['kids_count'] ?> Kid<?= $item['kids_count']!=1?'s':'' ?><?php endif; ?>
+        <p style="font-size:0.84rem;color:var(--gray-500);margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span><i class="fa-solid fa-user" style="color:var(--green);"></i> <?= (int)$item['adults_count'] ?> Adult<?= $item['adults_count']!=1?'s':'' ?></span>
+          <?php if ($item['kids_count']>0): ?><span style="color:var(--gray-300);">·</span> <span><i class="fa-solid fa-child" style="color:var(--green);"></i> <?= (int)$item['kids_count'] ?> Kid<?= $item['kids_count']!=1?'s':'' ?></span><?php endif; ?>
         </p>
         <div class="summary-line">
           <span style="color:var(--gray-500);">Base rate</span>
@@ -264,7 +277,7 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endif; ?>
         <?php foreach ($item['addons'] as $addon): ?>
         <div class="summary-line">
-          <span style="color:var(--gray-500);">✨ <?= e($addon['addon_name']) ?> ×<?= (int)$addon['quantity'] ?></span>
+          <span style="color:var(--gray-500);"><i class="fa-solid fa-star" style="color:var(--green);"></i> <?= e($addon['addon_name']) ?> ×<?= (int)$addon['quantity'] ?></span>
           <span style="font-weight:600;"><?= peso($addon['subtotal']) ?></span>
         </div>
         <?php endforeach; ?>
@@ -283,12 +296,12 @@ require_once __DIR__ . '/../includes/header.php';
       <span style="font-weight:700;font-size:1.4rem;"><?= peso($cartTotal) ?></span>
     </div>
 
-    <h2 style="font-size:1rem;font-weight:700;color:var(--gray-800);margin-bottom:12px;">💳 Payment Method</h2>
+    <h2 style="font-size:1rem;font-weight:700;color:var(--gray-800);margin-bottom:12px;"><i class="fa-solid fa-credit-card" style="color:var(--green);margin-right:6px;"></i>Payment Method</h2>
 
     <div class="payment-method-option" id="optCash" onclick="selectPayment('cash')">
       <input type="radio" name="payment_method" value="cash" id="radioCash" style="display:none;"/>
       <div class="pay-radio" id="radioCashDot"></div>
-      <div class="pay-icon" style="background:#dcfce7;">🏖️</div>
+      <div class="pay-icon" style="background:#dcfce7;font-size:1.1rem;color:var(--green-dark);"><i class="fa-solid fa-money-bill-wave"></i></div>
       <div style="flex:1;">
         <p style="font-weight:700;font-size:0.95rem;color:var(--gray-800);margin-bottom:2px;">Pay at the Resort</p>
         <p style="font-size:0.82rem;color:var(--gray-400);">Pay in cash upon arrival. No upfront payment needed.</p>
@@ -314,12 +327,12 @@ require_once __DIR__ . '/../includes/header.php';
     <button type="submit" class="btn btn-primary btn-full"
             style="font-size:1.05rem;padding:15px;margin-top:8px;"
             onclick="return validatePay()">
-      ✅ Confirm Booking — <?= peso($cartTotal) ?>
+      <i class="fa-solid fa-circle-check"></i> Confirm Booking — <?= peso($cartTotal) ?>
     </button>
 
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
-      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Reservation will be <strong>pending</strong> until approved by the resort.</div>
-      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><span style="color:var(--green);">✔</span> Free cancellation before 48 hours of check-in.</div>
+      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-check" style="color:var(--green);margin-top:1px;"></i> Reservation will be <strong>pending</strong> until approved by the resort.</div>
+      <div style="display:flex;gap:8px;font-size:0.8rem;color:var(--gray-400);"><i class="fa-solid fa-check" style="color:var(--green);margin-top:1px;"></i> Free cancellation before 48 hours of check-in.</div>
     </div>
   </form>
 </div>

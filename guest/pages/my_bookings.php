@@ -68,26 +68,28 @@ require_once __DIR__ . '/../includes/header.php';
 
 <style>
 .booking-card { border:2px solid var(--green-100); border-radius:var(--radius); overflow:hidden; background:#fff; margin-bottom:16px; transition:var(--transition); }
-.booking-card:hover { border-color:var(--green-200); box-shadow:0 4px 18px rgba(0,0,0,0.06); }
-.booking-card-img { width:160px; flex-shrink:0; overflow:hidden; }
-.booking-card-img img { width:100%; height:100%; object-fit:cover; }
+.booking-card:hover { border-color:var(--green); box-shadow:0 4px 20px rgba(5,150,105,0.08); }
+.booking-card-img { width:170px; flex-shrink:0; overflow:hidden; min-height:150px; }
+.booking-card-img img { width:100%; height:100%; object-fit:cover; display:block; }
 .booking-info-grid { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
-.binfo { background:var(--green-50); border-radius:var(--radius-sm); padding:8px 12px; min-width:120px; }
-@media (max-width: 600px) {
-  .booking-card-img { width:100%; height:180px; }
+.binfo { background:var(--green-50); border-radius:var(--radius-sm); padding:8px 12px; min-width:120px; flex:1; }
+.binfo p:first-child { color:var(--gray-400); font-size:0.68rem; font-weight:700; text-transform:uppercase; margin-bottom:2px; }
+@media (max-width: 640px) {
+  .booking-card-img { width:100%; min-height:180px; }
+  .booking-info-grid { gap:8px; }
 }
 </style>
 
 <div class="container page-wrap">
 
   <div style="margin-bottom:28px;">
-    <h1 style="font-size:1.8rem;font-weight:700;color:var(--green-dark);margin-bottom:4px;">📋 My Bookings</h1>
+    <h1 style="font-size:1.8rem;font-weight:700;color:var(--green-dark);margin-bottom:4px;display:flex;align-items:center;gap:10px;"><i class="fa-solid fa-list-check"></i> My Bookings</h1>
     <p style="color:var(--gray-400);"><?= count($reservations) ?> reservation<?= count($reservations)!==1?'s':'' ?></p>
   </div>
 
   <?php if (empty($reservations)): ?>
     <div class="empty-state">
-      <div class="empty-icon">📋</div>
+      <div class="empty-icon"><i class="fa-solid fa-list-check" style="font-size:2.5rem;color:var(--green-200);"></i></div>
       <p class="empty-title">No bookings yet</p>
       <p class="empty-desc">Browse our facilities and make your first reservation!</p>
       <a href="<?= SITE_URL ?>/guest/index.php#facilities" class="btn btn-primary">Explore Facilities</a>
@@ -140,7 +142,7 @@ require_once __DIR__ . '/../includes/header.php';
           <!-- Guests + Payment + Amount -->
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:10px;border-top:1px solid var(--green-100);margin-top:2px;">
             <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-              <span style="font-size:0.82rem;color:var(--gray-500);">👤 <?= (int)$res['num_guests'] ?> Guest<?= $res['num_guests']!=1?'s':'' ?></span>
+              <span style="font-size:0.82rem;color:var(--gray-500);display:flex;align-items:center;gap:5px;"><i class="fa-solid fa-user" style="color:var(--green);"></i> <?= (int)$res['num_guests'] ?> Guest<?= $res['num_guests']!=1?'s':'' ?></span>
               <?= payBadge($res['payment_method']) ?>
               <span style="font-size:0.74rem;color:var(--gray-400);">Reserved: <?= date('M d, Y', strtotime($res['reserved_at'])) ?></span>
             </div>
