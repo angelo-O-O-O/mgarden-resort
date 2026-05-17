@@ -57,6 +57,8 @@ $_rs = $db->query("SELECT COUNT(*) AS total, COALESCE(AVG(rating),0) AS avg_rati
 $_rsRow      = $_rs ? $_rs->fetch_assoc() : ['total' => 0, 'avg_rating' => 0];
 $liveAvgRating   = round((float)$_rsRow['avg_rating'], 1);
 $liveTotalReviews = (int)$_rsRow['total'];
+$_hg = $db->query("SELECT COUNT(DISTINCT guest_id) AS cnt FROM reviews WHERE status='approved' AND rating >= 3");
+$happyGuests = $_hg ? (int)$_hg->fetch_assoc()['cnt'] : 0;
 
 function catIcon($category) {
     $map = [
@@ -97,9 +99,9 @@ require_once __DIR__ . '/includes/header.php';
         <a href="#about"      class="btn btn-ghost"   style="font-size:1rem;padding:13px 28px;">About Us</a>
       </div>
       <div class="hero-stats">
-        <div class="hero-stat"><p><?= count($facilities) ?>+</p><p>Facilities</p></div>
+        <div class="hero-stat"><p><?= count($facilities) ?></p><p>Facilities</p></div>
         <div class="hero-stat"><p><?= $liveAvgRating > 0 ? number_format($liveAvgRating, 1) : '4.9' ?> <i class="fa-solid fa-star" style="color: var(--yellow);"></i></p><p>Rating</p></div>
-        <div class="hero-stat"><p>500+</p><p>Happy Guests</p></div>
+        <div class="hero-stat"><p><?= $happyGuests ?></p><p>Happy Guests</p></div>
       </div>
     </div>
   </div>
@@ -308,11 +310,11 @@ require_once __DIR__ . '/includes/header.php';
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
           <div class="card" style="padding:20px;text-align:center;">
-            <p style="font-size:1.8rem;font-weight:700;color:var(--green);"><?= count($facilities) ?>+</p>
+            <p style="font-size:1.8rem;font-weight:700;color:var(--green);"><?= count($facilities) ?></p>
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Facilities</p>
           </div>
           <div class="card" style="padding:20px;text-align:center;">
-            <p style="font-size:1.8rem;font-weight:700;color:var(--green);">500+</p>
+            <p style="font-size:1.8rem;font-weight:700;color:var(--green);"><?= $happyGuests ?></p>
             <p style="font-size:0.78rem;color:var(--gray-400);font-weight:600;">Happy Guests</p>
           </div>
           <div class="card" style="padding:20px;text-align:center;">

@@ -182,16 +182,19 @@ require_once __DIR__ . '/../includes/header.php';
   <?php endif; ?>
 </div>
 
+<?php
+ob_start();
+?>
 <!-- ── REVIEW MODAL ── -->
 <style>
-.review-modal-box { background:#fff; border-radius:var(--radius-lg); padding:28px 32px; max-width:480px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto; }
+.review-modal-box { background:#fff; border-radius:var(--radius-lg); padding:28px 32px; max-width:480px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto; }
 .review-modal-btns { display:flex; gap:10px; }
 @media (max-width: 480px) {
-  .review-modal-box { padding:22px 18px; width:95%; }
+  .review-modal-box { padding:22px 18px; }
   .review-modal-btns { flex-direction:column; }
 }
 </style>
-<div id="reviewModalBackdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:500;backdrop-filter:blur(2px);align-items:center;justify-content:center;">
+<div id="reviewModalBackdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1100;backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
   <div class="review-modal-box">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <h3 style="font-weight:700;font-size:1.15rem;color:var(--green-dark);">⭐ Rate Your Stay</h3>
@@ -277,5 +280,6 @@ function validateReview() {
   return true;
 }
 </script>
+<?php $pageModals = ob_get_clean(); ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

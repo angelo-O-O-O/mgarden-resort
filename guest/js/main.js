@@ -336,23 +336,28 @@ document.addEventListener('DOMContentLoaded', function () {
   function setActiveLink() {
     let current = '';
     sections.forEach(function (sec) {
-      const top = sec.getBoundingClientRect().top;
-      if (top <= 100) current = sec.getAttribute('id');
+      const rect = sec.getBoundingClientRect();
+      // Only active while the section is still visible in the viewport
+      if (rect.top <= 100 && rect.bottom > 0) current = sec.getAttribute('id');
     });
 
     // Clear all
     links.forEach(function (l) { l.classList.remove('active'); });
 
     if (current) {
-      // Highlight matching anchor link
-      links.forEach(function (link) {
-        const href = link.getAttribute('href') || '';
-        if (href.endsWith('#' + current)) {
-          link.classList.add('active');
-        }
-      });
+      // Sections whose IDs don't match a nav anchor (link goes to a separate page)
+      const navIdMap = { reviews: 'navReviews' };
+      if (navIdMap[current]) {
+        const el = document.getElementById(navIdMap[current]);
+        if (el) el.classList.add('active');
+      } else {
+        links.forEach(function (link) {
+          const href = link.getAttribute('href') || '';
+          if (href.endsWith('#' + current)) link.classList.add('active');
+        });
+      }
     } else {
-      // Match current path against any nav link's PHP filename
+      // No active section — match by page path or fall back to Home
       const path = window.location.pathname;
       let matched = null;
       links.forEach(function (link) {
